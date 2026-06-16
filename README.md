@@ -56,7 +56,21 @@ Unity Explorer is an in-game inspector that makes it much easier to find compone
 
 ---
 
-## Installing This Mod
+## Installing This Mod for dev or debugging
+
+1. Build the project (see below)
+2. Copy the BC_archipelago.dll and Archipelago.MultiClient.Net.dll from My Game\BepInEx\plugins\BC_archipelago into:
+
+   ```
+   Bomber Crew/BepInEx/plugins
+   ```
+
+3. Launch Bomber Crew. A small mod label should appear in the top-left corner of the screen.
+4. Use the on-screen host / slot / password fields to connect to an Archipelago room.
+
+---
+
+## Installing This Mod for a release
 
 1. Build the project (see below) or download a release ZIP.
 2. Copy the contents of the release folder or ZIP into:
