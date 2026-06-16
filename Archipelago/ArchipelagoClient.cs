@@ -68,7 +68,7 @@ public class ArchipelagoClient
                     session.TryConnectAndLogin(
                         Game,
                         ServerData.SlotName,
-                        ItemsHandlingFlags.,
+                        ItemsHandlingFlags.AllItems,
                         new Version(APVersion),
                         password: ServerData.Password,
                         requestSlotData: ServerData.NeedSlotData
@@ -97,7 +97,7 @@ public class ArchipelagoClient
             Authenticated = true;
 
             DeathLinkHandler = new(session.CreateDeathLinkService(), ServerData.SlotName);
-            session.Locations.CompleteLocationChecksAsync(ServerData.CheckedLocations.ToArray());
+            session.Locations.CompleteLocationChecksAsync(null, ServerData.CheckedLocations.ToArray());
             outText = $"Successfully connected to {ServerData.Uri} as {ServerData.SlotName}!";
 
             ArchipelagoConsole.LogMessage(outText);
@@ -124,7 +124,7 @@ public class ArchipelagoClient
     private void Disconnect()
     {
         Plugin.BepinLogger.LogDebug("disconnecting from server...");
-        session?.Socket.DisconnectAsync();
+        session?.Socket.Disconnect();
         session = null;
         Authenticated = false;
     }
