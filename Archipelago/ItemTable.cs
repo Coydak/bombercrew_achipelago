@@ -397,7 +397,45 @@ public static class ItemTable
         { 9300339, new ItemDefinition(9300339, "VestFlakHeavyMk3 (crew Vest)", ItemCategory.CrewEquipment, "Vest:VestFlakHeavyMk3") },
         { 9300340, new ItemDefinition(9300340, "FlightsuitWinterJumper01 (crew Flightsuit)", ItemCategory.CrewEquipment, "Flightsuit:FlightsuitWinterJumper01") },
         { 9300341, new ItemDefinition(9300341, "FlightsuitWinterJumper02 (crew Flightsuit)", ItemCategory.CrewEquipment, "Flightsuit:FlightsuitWinterJumper02") },
-        { 9300342, new ItemDefinition(9300342, "FlightsuitWinterJumper03 (crew Flightsuit)", ItemCategory.CrewEquipment, "Flightsuit:FlightsuitWinterJumper03") },    };
+        { 9300342, new ItemDefinition(9300342, "FlightsuitWinterJumper03 (crew Flightsuit)", ItemCategory.CrewEquipment, "Flightsuit:FlightsuitWinterJumper03") },
+
+        // Funds drops.
+        { 9310000, new ItemDefinition(9310000, "Small Funds Drop", ItemCategory.Funds, "500") },
+        { 9310001, new ItemDefinition(9310001, "Medium Funds Drop", ItemCategory.Funds, "1500") },
+        { 9310002, new ItemDefinition(9310002, "Large Funds Drop", ItemCategory.Funds, "5000") },
+
+        // Intel drops.
+        { 9310010, new ItemDefinition(9310010, "Small Intel Drop", ItemCategory.Intel, "50") },
+        { 9310011, new ItemDefinition(9310011, "Medium Intel Drop", ItemCategory.Intel, "150") },
+        { 9310012, new ItemDefinition(9310012, "Large Intel Drop", ItemCategory.Intel, "500") },
+
+        // Crew skill XP, one item per Crewman.SpecialisationSkill.
+        { 9310020, new ItemDefinition(9310020, "Piloting Training", ItemCategory.CrewSkillXp, "Piloting:250") },
+        { 9310021, new ItemDefinition(9310021, "Gunning Training", ItemCategory.CrewSkillXp, "Gunning:250") },
+        { 9310022, new ItemDefinition(9310022, "Navigator Training", ItemCategory.CrewSkillXp, "Navigator:250") },
+        { 9310023, new ItemDefinition(9310023, "Radio Operator Training", ItemCategory.CrewSkillXp, "RadioOp:250") },
+        { 9310024, new ItemDefinition(9310024, "Engineer Training", ItemCategory.CrewSkillXp, "Engineer:250") },
+        { 9310025, new ItemDefinition(9310025, "Bomb Aiming Training", ItemCategory.CrewSkillXp, "BombAiming:250") },
+        { 9310026, new ItemDefinition(9310026, "First Aid Training", ItemCategory.CrewSkillXp, "FirstAid:250") },
+        { 9310027, new ItemDefinition(9310027, "Fire Fighting Training", ItemCategory.CrewSkillXp, "FireFighting:250") },
+        { 9310028, new ItemDefinition(9310028, "All-Round Training", ItemCategory.CrewSkillXp, "150") },
+
+        // Mission unlocks: the training gate and every chapter's key mission (see LocationTable).
+        { 9310030, new ItemDefinition(9310030, "Bomb Run Training Clearance", ItemCategory.MissionUnlock, "BombRunTraining") },
+        { 9310031, new ItemDefinition(9310031, "Chapter 1 Clearance", ItemCategory.MissionUnlock, "C01_KEY") },
+        { 9310032, new ItemDefinition(9310032, "Chapter 2 Clearance", ItemCategory.MissionUnlock, "C02_KEY") },
+        { 9310033, new ItemDefinition(9310033, "Chapter 3 Clearance", ItemCategory.MissionUnlock, "C03_KEY") },
+        { 9310034, new ItemDefinition(9310034, "Chapter 4 Clearance", ItemCategory.MissionUnlock, "C04_KEY") },
+        { 9310035, new ItemDefinition(9310035, "Chapter 5 Clearance", ItemCategory.MissionUnlock, "C05_KEY") },
+        { 9310036, new ItemDefinition(9310036, "Chapter 6 Clearance", ItemCategory.MissionUnlock, "C06_KEY") },
+        { 9310037, new ItemDefinition(9310037, "Chapter 7 Clearance", ItemCategory.MissionUnlock, "C07_KEY") },
+        { 9310038, new ItemDefinition(9310038, "Final Mission Clearance", ItemCategory.MissionUnlock, "C08_KEY") },
+        { 9310039, new ItemDefinition(9310039, "DLC1 Chapter Clearance", ItemCategory.MissionUnlock, "DLCMP01_C01_KEY") },
+
+        // Mid-mission repair and crew heal/resurrect. No payload needed.
+        { 9310050, new ItemDefinition(9310050, "Instant Repair", ItemCategory.InstantRepair) },
+        { 9310051, new ItemDefinition(9310051, "Instant Heal", ItemCategory.InstantHeal) },
+    };
 
     public static bool TryGetDefinition(long id, out ItemDefinition definition)
     {

@@ -188,21 +188,26 @@ public class ItemRewarder
         ArchipelagoConsole.LogMessage($"Equipped crew with '{equipment.GetNamedTextTranslated()}'.");
     }
 
+    /// <summary>
+    /// Expected payload: "SkillName:Amount" (SkillName a Crewman.SpecialisationSkill name, e.g.
+    /// Piloting, Gunning, Navigator, RadioOp, Engineer, BombAiming, FirstAid, FireFighting) to add
+    /// XP only to crew who have that skill as primary or secondary, or just "Amount" to boost
+    /// every crewman's primary and secondary skill regardless of type.
+    /// </summary>
     private static void ApplyCrewSkillXp(string payload)
     {
-        // Expected payload: "SkillName:Amount" or just "Amount" to apply to all crew.
         int amount = 100;
-        string skillName = null;
+        Crewman.SpecialisationSkill? skill = null;
 
         if (!string.IsNullOrEmpty(payload))
         {
             var parts = payload.Split(':');
-            if (parts.Length == 2)
+            if (parts.Length == 2 && Enum.IsDefined(typeof(Crewman.SpecialisationSkill), parts[0]))
             {
-                skillName = parts[0];
+                skill = (Crewman.SpecialisationSkill)Enum.Parse(typeof(Crewman.SpecialisationSkill), parts[0]);
                 int.TryParse(parts[1], out amount);
             }
-            else if (parts.Length == 1)
+            else
             {
                 int.TryParse(parts[0], out amount);
             }
@@ -210,11 +215,16 @@ public class ItemRewarder
 
         foreach (var crewman in GameState.GetAliveCrewmen())
         {
-            crewman.GetPrimarySkill()?.AddXP(amount);
-            crewman.GetSecondarySkill()?.AddXP(amount);
+            var primary = crewman.GetPrimarySkill();
+            var secondary = crewman.GetSecondarySkill();
+
+            if (primary != null && (skill == null || primary.GetSkill() == skill)) primary.AddXP(amount);
+            if (secondary != null && (skill == null || secondary.GetSkill() == skill)) secondary.AddXP(amount);
         }
 
-        ArchipelagoConsole.LogMessage($"Applied {amount} XP to crew.");
+        ArchipelagoConsole.LogMessage(skill == null
+            ? $"Applied {amount} XP to crew."
+            : $"Applied {amount} {skill} XP to crew.");
     }
 
     /// <summary>
