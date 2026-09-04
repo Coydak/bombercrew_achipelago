@@ -106,11 +106,7 @@ public static class GameState
             try
             {
                 var mission = GameFlow.Instance?.GetCurrentMissionInfo()?.GetCurrentlySelectedMissionDetails();
-                if (mission == null) return string.Empty;
-
-                // m_missionReferenceName is a private field; use reflection to read it.
-                var field = mission.GetType().GetField("m_missionReferenceName", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                return field?.GetValue(mission) as string ?? string.Empty;
+                return mission?.m_missionReferenceName ?? string.Empty;
             }
             catch
             {
