@@ -1,7 +1,7 @@
 # TODO — where we left off
 
-Status snapshot as of the session that built the shop-purchase-as-location system
-(commit `daad444`). Read this before picking work back up.
+Status snapshot as of the session that decoupled shop purchases from actually granting
+items (commit `50b0b98`). Read this before picking work back up.
 
 ## What's done and verified in-game
 
@@ -16,6 +16,14 @@ Status snapshot as of the session that built the shop-purchase-as-location syste
     purchase (`BomberUpgradeScreenController.AttemptPurchase`,
     `CrewQuartersScreenController.PurchaseEquipment[All]`), confirmed by checking the
     purchase actually succeeded (these methods silently no-op if you can't afford it).
+  - **Important design point**: buying something in the shop ONLY sends the check — it is
+    then immediately reverted (slot/crewman equip, balance, crew gear stock all restored
+    to their pre-purchase values in the Harmony postfix). The upgrade/equipment is never
+    actually kept from a purchase. The *only* way to really install/equip something is to
+    receive it as an Archipelago item (ItemRewarder). This was a deliberate design choice
+    (see session transcript) to keep location (check) and item (reward) properly decoupled,
+    since vanilla Bomber Crew has no "owned but not equipped" inventory concept to piggyback
+    on and buy-without-equipping isn't a thing in the original UI.
   - **Total: 387 locations.**
 - **`ItemTable.cs`**: 370 items — 289 BomberUpgrade + 54 CrewEquipment (same catalogue
   as the shop locations, but received via AP instead of bought) + 27 utility items
