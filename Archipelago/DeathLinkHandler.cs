@@ -13,6 +13,13 @@ public class DeathLinkHandler
     private readonly Queue<DeathLink> deathLinks = new();
 
     /// <summary>
+    /// Game-specific hook invoked when a queued death link should actually be enacted.
+    /// Assigned once by the game layer (see BC_archipelago.BomberCrew.DeathLinkHooks) at plugin
+    /// startup, keeping this class free of any dependency on Bomber Crew's own types.
+    /// </summary>
+    public static Action<string> OnKillRequested;
+
+    /// <summary>
     /// instantiates our death link handler, sets up the hook for receiving death links, and enables death link if needed
     /// </summary>
     /// <param name="deathLinkService">The new DeathLinkService that our handler will use to send and
@@ -74,8 +81,8 @@ public class DeathLinkHandler
             var deathLink = deathLinks.Dequeue();
             var cause = deathLink.Cause.IsNullOrWhiteSpace() ? GetDeathLinkCause(deathLink) : deathLink.Cause;
 
-            //TODO kill the player
             Plugin.BepinLogger.LogMessage(cause);
+            OnKillRequested?.Invoke(cause);
         }
         catch (Exception e)
         {

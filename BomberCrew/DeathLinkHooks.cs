@@ -1,17 +1,25 @@
 extern alias game;
 
 using BC_archipelago.Archipelago;
+using BC_archipelago.Utils;
 using game;
 using HarmonyLib;
 
 namespace BC_archipelago.BomberCrew;
 
 /// <summary>
-/// Harmony patches that detect local player death and broadcast DeathLink events.
+/// Harmony patches that detect local player death and broadcast DeathLink events, and the
+/// game-side handler that enacts a DeathLink received from another player.
 /// </summary>
 public static class DeathLinkHooks
 {
     private static bool patched;
+
+    /// <summary>
+    /// Set while <see cref="KillLocalCrew"/> is killing crew in response to a received DeathLink,
+    /// so the InstantKill postfix below does not turn around and broadcast it right back out.
+    /// </summary>
+    private static bool isApplyingReceivedDeathLink;
 
     public static void Apply()
     {
@@ -20,6 +28,8 @@ public static class DeathLinkHooks
         var harmony = new Harmony(Plugin.PluginGUID);
         harmony.PatchAll(typeof(DeathLinkHooks));
         patched = true;
+
+        DeathLinkHandler.OnKillRequested = KillLocalCrew;
 
         Plugin.BepinLogger.LogDebug("DeathLinkHooks applied.");
     }
@@ -31,7 +41,45 @@ public static class DeathLinkHooks
     [HarmonyPatch(typeof(CrewmanLifeStatus), "InstantKill")]
     private static void CrewmanInstantKillPostfix()
     {
+        if (isApplyingReceivedDeathLink) return;
+
         BroadcastDeathLink("A crewman was killed in action.");
+    }
+
+    /// <summary>
+    /// Kills every currently alive crewman in the active mission in response to an incoming
+    /// DeathLink. Only meaningful mid-mission (there's no live crew to kill at base); the caller
+    /// is expected to only invoke <see cref="DeathLinkHandler.KillPlayer"/> while in a mission.
+    /// </summary>
+    private static void KillLocalCrew(string cause)
+    {
+        if (!GameState.IsInMission)
+        {
+            Plugin.BepinLogger.LogDebug("Received DeathLink while not in a mission; nothing to kill.");
+            return;
+        }
+
+        ArchipelagoConsole.LogMessage($"DeathLink received: {cause}");
+
+        isApplyingReceivedDeathLink = true;
+        try
+        {
+            var crewSpawner = CrewSpawner.Instance;
+            if (crewSpawner == null) return;
+
+            foreach (var pairing in crewSpawner.GetAllCrew())
+            {
+                var lifeStatus = pairing.m_spawnedAvatar?.GetHealthState();
+                if (lifeStatus != null && !lifeStatus.IsDead())
+                {
+                    lifeStatus.InstantKill();
+                }
+            }
+        }
+        finally
+        {
+            isApplyingReceivedDeathLink = false;
+        }
     }
 
     /// <summary>

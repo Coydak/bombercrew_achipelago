@@ -129,5 +129,10 @@ public class Plugin : BaseUnityPlugin
     private void Update()
     {
         ArchipelagoClient?.ItemRewarder?.Update();
+
+        if (BomberCrew.GameState.IsInMission)
+        {
+            ArchipelagoClient?.DeathLinkHandler?.KillPlayer();
+        }
     }
 }
