@@ -78,6 +78,11 @@ public static class LocationTable
         { "DLCMP01_C01_M05", Dlc01Base + 4 },
         { "DLCMP01_C01_M06", Dlc01Base + 5 },
         { "DLCMP01_C01_KEY", Dlc01Base + 6 },
+
+        // Confirmed live in-game (reference name not present in the CampaignStructure.m_allMissions
+        // dump, so it's likely a standalone fixed intro mission rather than part of the procedural
+        // mission pool): the very first mission played on a new campaign.
+        { "FIRST_MISSION", MainCampaignBase + 200 },
     };
 
     /// <summary>
