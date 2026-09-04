@@ -4,7 +4,7 @@ A BepInEx 5 plugin that adds [Archipelago](https://archipelago.gg/) randomizer s
 
 This mod connects your game to an Archipelago multi-world room, receives items from other players, sends checked locations back to the server, and supports DeathLink.
 
-> **Status:** Early development / template-based. Placeholder values (plugin GUID, game name, version) still need to be finalized before a release build.
+> **Status:** Early development. Phase 1 (build, identity, config) and Phase 3 scaffolding (game assembly references, mission/DeathLink hooks, item rewarder) are complete. The remaining work is to fill in the Archipelago item/location tables for the specific Bomber Crew world definition and finish the in-game reward implementations.
 
 ---
 
@@ -58,15 +58,16 @@ Unity Explorer is an in-game inspector that makes it much easier to find compone
 
 ## Installing This Mod for dev or debugging
 
-1. Build the project (see below)
-2. Copy the BC_archipelago.dll and Archipelago.MultiClient.Net.dll from My Game\BepInEx\plugins\BC_archipelago into:
+1. Build the project (see below).
+2. Copy `BC_archipelago.dll`, `Archipelago.MultiClient.Net.dll`, and `websocket-sharp.dll` from the build output into:
 
    ```
-   Bomber Crew/BepInEx/plugins
+   Bomber Crew/BepInEx/plugins/BC_archipelago/
    ```
 
 3. Launch Bomber Crew. A small mod label should appear in the top-left corner of the screen.
 4. Use the on-screen host / slot / password fields to connect to an Archipelago room.
+5. Complete a mission to send a location check, or die to broadcast a DeathLink (when enabled).
 
 ---
 
@@ -92,14 +93,19 @@ From the repository root:
 # Restore NuGet packages
 dotnet restore
 
-# Debug build
+# Debug build (outputs to bin\Debug\BC_archipelago by default)
 dotnet build
+
+# Debug build that copies directly into your BepInEx plugins folder
+dotnet build -p:BepInExPluginsPath="C:\Path\To\Bomber Crew\BepInEx\plugins"
 
 # Release build (produces bin\Release\BC_archipelago-<Version>.zip)
 dotnet build -c Release
 ```
 
-> **Note:** The Debug configuration writes output to `C:\My Game\BepInEx\plugins\BC_archipelago` by default. Create that directory or change the path in `ArchipelagoBepin5Template.csproj` if it does not exist.
+> **Notes:**
+> * The Debug output path defaults to `bin\Debug\BC_archipelago`. To copy directly into a BepInEx plugins folder, pass the `BepInExPluginsPath` property as shown above.
+> * The Bomber Crew assembly path defaults to the Steam install at `C:\Program Files (x86)\Steam\steamapps\common\BomberCrew\BomberCrew_Data\Managed`. Override it with `-p:BomberCrewManagedPath="..."` if your install is elsewhere.
 
 ---
 

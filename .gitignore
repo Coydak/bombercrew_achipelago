@@ -459,3 +459,6 @@ crashlytics-build.properties
 
 #Agent-based model generated files
 AGENTS.md
+
+# Temporary reverse-engineering / reflection scratchpad
+.tmp_reflect/

@@ -4,7 +4,7 @@
         <TargetFramework>net35</TargetFramework>
         <AssemblyName>BC_archipelago</AssemblyName>
         <Description>Example Archipelago Plugin</Description>
-        <Version>1.0.0</Version>
+        <Version>0.1.0</Version>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
         <!-- you may need this for getting the multiclient dll to output for .net 6 and netstandard 2.0 -->
@@ -12,13 +12,17 @@
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <RootNamespace>BC_archipelago</RootNamespace>
+        <!-- Override with -p:BomberCrewManagedPath="..." if your install is elsewhere -->
+        <BomberCrewManagedPath Condition="'$(BomberCrewManagedPath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\BomberCrew\BomberCrew_Data\Managed</BomberCrewManagedPath>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <DebugSymbols>true</DebugSymbols>
         <DebugType>full</DebugType>
         <Optimize>false</Optimize>
-        <OutputPath>C:\My Game\BepInEx\plugins\$(AssemblyName)</OutputPath>
+        <!-- Default Debug output. Override by passing -p:BepInExPluginsPath="C:\Path\To\BepInEx\plugins" -->
+        <OutputPath Condition="'$(BepInExPluginsPath)' == ''">bin\Debug\$(AssemblyName)</OutputPath>
+        <OutputPath Condition="'$(BepInExPluginsPath)' != ''">$(BepInExPluginsPath)\$(AssemblyName)</OutputPath>
         <DefineConstants>DEBUG;TRACE</DefineConstants>
         <ErrorReport>prompt</ErrorReport>
     </PropertyGroup>
@@ -44,11 +48,30 @@
         </PackageReference>
         <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
         <PackageReference Include="BepInEx.Core" Version="5.*" />
+        <PackageReference Include="HarmonyX" Version="2.*" />
         <PackageReference Include="UnityEngine.Modules" Version="5.6.5" IncludeAssets="compile" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- Bomber Crew game assembly references. Private=false keeps them out of the release ZIP. -->
+    <ItemGroup>
+        <Reference Include="Assembly-CSharp">
+            <HintPath>$(BomberCrewManagedPath)\Assembly-CSharp.dll</HintPath>
+            <Private>false</Private>
+            <Aliases>game</Aliases>
+        </Reference>
+        <Reference Include="Assembly-CSharp-firstpass">
+            <HintPath>$(BomberCrewManagedPath)\Assembly-CSharp-firstpass.dll</HintPath>
+            <Private>false</Private>
+            <Aliases>game</Aliases>
+        </Reference>
+        <Reference Include="UnityEngine.UI">
+            <HintPath>$(BomberCrewManagedPath)\UnityEngine.UI.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
 
 </Project>

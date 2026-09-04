@@ -96,7 +96,8 @@ public class DeathLinkHandler
     /// <summary>
     /// called to send a death link to the multiworld
     /// </summary>
-    public void SendDeathLink()
+    /// <param name="cause">optional human-readable cause shown to other players</param>
+    public void SendDeathLink(string cause = null)
     {
         try
         {
@@ -104,8 +105,9 @@ public class DeathLinkHandler
 
             Plugin.BepinLogger.LogMessage("sharing your death...");
 
-            // add the cause here
-            var linkToSend = new DeathLink(slotName);
+            var linkToSend = cause.IsNullOrWhiteSpace()
+                ? new DeathLink(slotName)
+                : new DeathLink(slotName, cause);
 
             service.SendDeathLink(linkToSend);
         }

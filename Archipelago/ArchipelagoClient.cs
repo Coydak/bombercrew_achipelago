@@ -14,13 +14,14 @@ namespace BC_archipelago.Archipelago;
 public class ArchipelagoClient
 {
     public const string APVersion = "0.5.0";
-    private const string Game = "My Game";
+    private const string Game = "Bomber Crew";
 
     public static bool Authenticated;
     private bool attemptingConnection;
 
     public static ArchipelagoData ServerData = new();
-    private DeathLinkHandler DeathLinkHandler;
+    public DeathLinkHandler DeathLinkHandler { get; private set; }
+    public BomberCrew.ItemRewarder ItemRewarder { get; } = new();
     private ArchipelagoSession session;
 
     /// <summary>
@@ -96,7 +97,8 @@ public class ArchipelagoClient
             ServerData.SetupSession(success.SlotData, session.RoomState.Seed);
             Authenticated = true;
 
-            DeathLinkHandler = new(session.CreateDeathLinkService(), ServerData.SlotName);
+            var deathLinkEnabled = ServerData.DeathLinkEnabled;
+            DeathLinkHandler = new(session.CreateDeathLinkService(), ServerData.SlotName, deathLinkEnabled);
             session.Locations.CompleteLocationChecksAsync(null, ServerData.CheckedLocations.ToArray());
             outText = $"Successfully connected to {ServerData.Uri} as {ServerData.SlotName}!";
 
@@ -135,6 +137,20 @@ public class ArchipelagoClient
     }
 
     /// <summary>
+    /// add a new location check to the list and notify the server
+    /// </summary>
+    public void CheckLocation(long locationId)
+    {
+        if (!Authenticated) return;
+        if (locationId < 0) return;
+
+        if (ServerData.CheckedLocations.Contains(locationId)) return;
+
+        ServerData.CheckedLocations.Add(locationId);
+        session.Locations.CompleteLocationChecksAsync(null, locationId);
+    }
+
+    /// <summary>
     /// we received an item so reward it here
     /// </summary>
     /// <param name="helper">item helper which we can grab our item from</param>
@@ -146,9 +162,15 @@ public class ArchipelagoClient
 
         ServerData.Index++;
 
-        // TODO reward the item here
-        // if items can be received while in an invalid state for actually handling them, they can be placed in a local
-        // queue/collection to be handled later
+        if (ItemTable.TryGetDefinition(receivedItem.ItemId, out var itemDefinition))
+        {
+            Plugin.BepinLogger.LogMessage($"Received item: {itemDefinition.Name}");
+            ItemRewarder.Reward(itemDefinition);
+        }
+        else
+        {
+            Plugin.BepinLogger.LogWarning($"Received unknown item ID: {receivedItem.ItemId}");
+        }
     }
 
     /// <summary>

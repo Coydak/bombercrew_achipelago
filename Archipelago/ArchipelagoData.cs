@@ -22,6 +22,11 @@ public class ArchipelagoData
 
     public bool NeedSlotData => slotData == null;
 
+    /// <summary>
+    /// Whether DeathLink was enabled by the Archipelago slot data.
+    /// </summary>
+    public bool DeathLinkEnabled { get; private set; }
+
     public ArchipelagoData()
     {
         Uri = "localhost";
@@ -46,6 +51,13 @@ public class ArchipelagoData
     {
         slotData = roomSlotData;
         seed = roomSeed;
+
+        if (roomSlotData != null &&
+            roomSlotData.TryGetValue("death_link", out var deathLinkValue) &&
+            deathLinkValue != null)
+        {
+            DeathLinkEnabled = bool.TryParse(deathLinkValue.ToString(), out var parsed) && parsed;
+        }
     }
 
     /// <summary>
