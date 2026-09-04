@@ -38,6 +38,7 @@ public class Plugin : BaseUnityPlugin
 
         MissionHooks.Apply();
         DeathLinkHooks.Apply();
+        ShopHooks.Apply();
 
         ArchipelagoConsole.LogMessage($"{ModDisplayInfo} loaded!");
     }
