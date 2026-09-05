@@ -1,0 +1,9 @@
+name: Player1
+description: Bomber Crew Archipelago seed.
+game: Bomber Crew
+requires:
+  version: 0.6.7
+Bomber Crew:
+  progression_balancing: 50
+  accessibility: items
+  include_dlc1: true

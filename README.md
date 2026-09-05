@@ -4,7 +4,7 @@ A BepInEx 5 plugin that adds [Archipelago](https://archipelago.gg/) randomizer s
 
 This mod connects your game to an Archipelago multi-world room, receives items from other players, sends checked locations back to the server, and supports DeathLink.
 
-> **Status:** Early development. Phase 1 (build, identity, config) and Phase 3 scaffolding (game assembly references, mission/DeathLink hooks, item rewarder) are complete. The remaining work is to fill in the Archipelago item/location tables for the specific Bomber Crew world definition and finish the in-game reward implementations.
+> **Status:** Working end-to-end - 325 locations (campaign missions + bomber upgrade/crew equipment shop purchases), 104 items, DeathLink support, and a matching `.apworld` to generate real seeds against. See `TODO.md` for remaining polish/known issues.
 
 ---
 
@@ -82,6 +82,114 @@ Unity Explorer is an in-game inspector that makes it much easier to find compone
 
 3. Launch Bomber Crew. A small mod label should appear in the top-left corner of the screen.
 4. Use the on-screen host / slot / password fields to connect to an Archipelago room.
+
+---
+
+## Generating and Hosting Your Own Seed
+
+The mod above only handles the *client* side (connecting Bomber Crew to a room). To actually
+play, you also need a `bomber_crew.apworld` and a generated seed - here's how, assuming you
+already have [Archipelago](https://archipelago.gg/) installed.
+
+### 1. Get the `.apworld`
+
+Build it from source (there's no packaged release yet):
+
+```bash
+python tools/gen_apworld_data.py
+```
+
+Then zip the `apworld_src/bomber_crew/` folder itself (so the zip's top level is
+`bomber_crew/...`, not `apworld_src/...`) and rename the result to `bomber_crew.apworld`.
+
+### 2. Install it
+
+Copy `bomber_crew.apworld` into your Archipelago install's `custom_worlds/` folder, e.g.:
+
+```
+C:\ProgramData\Archipelago\custom_worlds\
+```
+
+### 3. Create a player YAML
+
+Copy `apworld_src/bomber_crew.yaml` (a ready-to-use template) into your Archipelago install's
+`Players/` folder and change `name:` to your own slot name:
+
+```yaml
+name: Player1
+game: Bomber Crew
+requires:
+  version: 0.6.7
+Bomber Crew:
+  progression_balancing: 50
+  accessibility: items
+  include_dlc1: true  # set to false if you don't own the DLC1 campaign
+```
+
+`include_dlc1` is the only option so far (defaults to `true`) - turning it off drops the 7
+DLC1 mission locations and its chapter-clearance item from the pool.
+
+### 4. Generate a seed
+
+From your Archipelago install folder:
+
+```
+ArchipelagoGenerate.exe --player_files_path Players
+```
+
+This produces a seed zip in `output/`.
+
+### 5. Host it
+
+```
+ArchipelagoServer.exe output\AP_<your seed>.zip
+```
+
+Defaults to `localhost:38281`, no password.
+
+### 6. Connect
+
+Launch Bomber Crew with the mod installed (see above) and enter the host/slot/password in the
+on-screen fields.
+
+> For a multiplayer room instead of solo testing, put everyone's YAML in the same `Players/`
+> folder before generating, and host the resulting seed somewhere reachable by all players.
+
+If you change `Archipelago/ItemTable.cs` or `Archipelago/LocationTable.cs` in the client mod,
+re-run `python tools/gen_apworld_data.py` and repeat steps 1-2 before generating a new seed -
+see `TODO.md` for the full dev loop.
+
+---
+
+## Connecting to a Room Hosted on archipelago.gg
+
+Bomber Crew runs on an old Unity/Mono runtime that can't complete a modern TLS handshake, so it
+**cannot connect directly** to a `wss://`-secured room like the ones archipelago.gg hosts for
+you after an upload (self-hosted rooms via `ArchipelagoServer.exe` work fine as-is, since those
+are plain unencrypted `ws://`). You'll see `Connection timed out` / `TLS handshake` errors in
+the log if you try.
+
+The fix is a tiny local relay (`tools/ap_ws_relay.py`) that does the TLS handshake for the game:
+the mod connects to it locally over plain `ws://` like normal, and the relay - a regular Python
+process with a real TLS stack - forwards everything to the actual `wss://` room. No router or
+firewall changes needed; it only makes outbound connections.
+
+**One-time setup** (needs [Python 3](https://www.python.org/downloads/) installed):
+
+```bash
+pip install websockets
+```
+
+**Each time you want to connect to an archipelago.gg room:**
+
+1. Double-click `tools/run_ap_relay.bat` (or run
+   `python tools/ap_ws_relay.py --remote <address from the site> --local-port 39000` yourself).
+2. Enter the room address the site gave you (e.g. `archipelago.gg:12345`) when prompted.
+3. Once it prints `Listening on ws://localhost:39000 -> relaying to ...`, leave that window open.
+4. In the mod's Host field, enter `localhost:39000` (not the archipelago.gg address) and connect
+   as usual.
+
+Closing the relay window disconnects you - it needs to keep running alongside the game.
 
 ---
 
