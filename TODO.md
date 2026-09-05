@@ -1,7 +1,7 @@
 # TODO — where we left off
 
-Status snapshot as of the session that decoupled shop purchases from actually granting
-items (commit `50b0b98`). Read this before picking work back up.
+Status snapshot as of the session that built and verified the real `.apworld`
+(`apworld_src/bomber_crew/`). Read this before picking work back up.
 
 ## What's done and verified in-game
 
@@ -40,30 +40,43 @@ items (commit `50b0b98`). Read this before picking work back up.
 
 ## What's NOT done yet
 
-### 1. The actual `.apworld` (biggest remaining piece)
+### 1. The real `.apworld` — DONE and verified live
 
-No real Archipelago world exists yet — only the throwaway 10-location filler world used
-to prove the connection worked. Needs a proper Python world with:
+`apworld_src/bomber_crew/` is a real, working Archipelago world (no longer the throwaway
+10-location filler):
 
-- `item_name_to_id` / `location_name_to_id` matching the 370 items / 387 locations above
-  exactly (names and IDs must match this C# code byte-for-byte).
-- **Itempool balancing**: 370 unique items for 387 locations — 17 short. Pad with extra
-  copies of filler-ish items (Funds/Intel/CrewSkillXp tiers), not with more upgrades
-  (those should stay 1:1 with their location so getting one doesn't feel redundant).
-- **Region/access rules**: decide how much of the real chapter-gating (BRT → C01 → C02
-  → ... → C08, DLC1 separately) to encode as AP logic vs. leaving ungated (see the
-  session's discussion: the real game already enforces this order independently of AP,
-  so locations don't strictly need item-gating to be logically reachable — but decide
-  deliberately, don't leave it undecided by accident).
-- **Item classification**: decide progression/useful/filler per item. Current thinking:
-  MissionUnlock = useful (never required, since nothing needs them — see above),
-  non-cosmetic BomberUpgrade/CrewEquipment = useful, cosmetic Livery = filler (per
-  earlier design choice), Funds/Intel/CrewSkillXp/InstantRepair/InstantHeal = filler.
-- **Goal/completion condition**: presumably reaching `C08_KEY`.
-- Manifest (`archipelago.json`), options (even if just an empty options dataclass),
-  and a player YAML template.
-- Once built: regenerate a real seed, swap out the current throwaway test server/world,
-  re-test the full loop (connect → real check → real item) end to end.
+- `world_data.py` is **generated** (`tools/gen_apworld_data.py`, run from repo root) by
+  parsing `Archipelago/ItemTable.cs` and `Archipelago/LocationTable.cs` directly — item/
+  location names and ids are guaranteed to match the C# tables exactly, never hand-typed.
+  Rerun this generator (then re-zip and reinstall the `.apworld`) any time either table
+  changes.
+- `__init__.py`: single flat "Menu" region containing all 388 real locations, no item-gated
+  access rules (deliberate — see the comment there and the reasoning that was previously
+  here: the real game enforces chapter/economy gating independently of AP already).
+  Itempool = 370 real items + filler copies padded up to 388. Classification: Livery-slot
+  BomberUpgrade items and the 17 utility items (Funds/Intel/CrewSkillXp/InstantRepair/
+  InstantHeal) are `filler`; everything else (non-cosmetic BomberUpgrade, CrewEquipment,
+  MissionUnlock) is `useful`.
+- **Goal**: a dedicated `address=None` "Victory" event location gated on
+  `state.can_reach_location("C08_KEY", player)`. Do NOT lock the Victory event directly onto
+  the real `C08_KEY` location (i.e. `get_location("C08_KEY").place_locked_item(...)`) — that
+  crashes this Archipelago version's server on load
+  (`_speedups.LocationStore.__init__: TypeError: an integer is required`), reproduced and
+  confirmed during development. Keep the goal as a separate event location instead.
+- Verified end-to-end against a live game + local `ArchipelagoServer.exe`: generated a real
+  seed (370 items / 388 locations), connected, bought `GunTurret303x2Mk2` in
+  `gun_turret_rear` (a real shop-purchase location), server placed `PigeonMk3` there and
+  sent it back, client received it and installed it on `survival_pigeon`. Full loop works.
+
+Remaining polish, not blocking:
+
+- No player-facing setup docs/YAML template committed yet for others to generate their own
+  seed (the dev flow so far is manual: `python tools/gen_apworld_data.py`, zip
+  `apworld_src/bomber_crew/` as `.apworld`, install into `custom_worlds/`, generate).
+- No options at all yet (no `options_dataclass`) — every game is identical. Could add e.g.
+  a "include cosmetic Livery items" toggle, or DLC1-inclusion toggle, later.
+- Itempool/classification/goal choices above are v1 opinions, not load-bearing — revisit
+  if playtesting says otherwise.
 
 ### 2. Not yet real items (lower priority, noted here so it isn't forgotten)
 
@@ -87,10 +100,20 @@ to prove the connection worked. Needs a proper Python world with:
 
 ## How to pick this back up
 
-1. Read `Archipelago/LocationTable.cs` and `Archipelago/ItemTable.cs` for the exact
-   names/IDs/payloads the `.apworld` must mirror.
-2. Start the `.apworld` from the itempool-balancing and access-rule decisions above —
-   those are design calls, not just typing.
-3. Test loop: generate seed → local `ArchipelagoServer.exe` → launch game → UnityExplorer
-   C# console for quick spot-checks (see this session's transcript for example snippets:
-   dumping catalogues/requirements, calling `ItemRewarder.Reward` directly, etc.).
+The big piece (the `.apworld`) is done. Remaining work is the polish items under
+"What's NOT done yet" #1, or moving on to #2/#3.
+
+Dev loop to regenerate/reinstall/test the world after changing either C# table or
+`apworld_src/bomber_crew/__init__.py`:
+
+1. If `ItemTable.cs`/`LocationTable.cs` changed: `python tools/gen_apworld_data.py` from
+   the repo root (regenerates `apworld_src/bomber_crew/world_data.py`).
+2. Zip `apworld_src/bomber_crew/` (the folder itself, so the zip's top level is
+   `bomber_crew/...`) and save it as `bomber_crew.apworld` in
+   `C:\ProgramData\Archipelago\custom_worlds\` (replacing the old one).
+3. `ArchipelagoGenerate.exe --player_files_path Players` from the Archipelago install dir
+   (there's already a `Players/bomber_crew.yaml`) to produce a new seed zip in `output/`.
+4. `ArchipelagoServer.exe <seed.zip>` to host it (localhost, no password by default).
+5. Launch the game, connect, test via UnityExplorer's C# console for spot-checks (see this
+   session's transcript for example snippets: dumping catalogues/requirements, calling
+   `ItemRewarder.Reward` directly, giving funds/intel, etc.).
