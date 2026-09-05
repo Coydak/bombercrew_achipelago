@@ -177,10 +177,22 @@ PROGRESSIVE_LINES = {
 
 entries = []  # (item_id_offset, display_name, category, payload)
 
+# Lines whose Mk1 tier matches a slot's default (already-installed) upgrade don't need an AP
+# item to grant that first tier - the player already starts with it. Those lines get one fewer
+# copy in the pool than they have tiers; ItemRewarder.DefaultUnlockedLines must match this set.
+DEFAULT_UNLOCKED_LINES = {
+    line_id
+    for slot_id, upgrade_type, default_name in SLOTS
+    if default_name is not None
+    for line_id, (_, tiers) in PROGRESSIVE_LINES.items()
+    if tiers[0] == default_name
+}
+
 # --- Progressive bomber upgrades: one item per line, applied fleet-wide. ---
 for line_id, (upgrade_type, tiers) in PROGRESSIVE_LINES.items():
     display = f"Progressive {line_id}"
-    payload = f"{line_id}:{len(tiers)}"
+    copies = len(tiers) - (1 if line_id in DEFAULT_UNLOCKED_LINES else 0)
+    payload = f"{line_id}:{copies}"
     entries.append((display, "BomberUpgradeProgressive", payload))
 
 # Cosmetic Livery items are intentionally excluded entirely (not randomized as items or

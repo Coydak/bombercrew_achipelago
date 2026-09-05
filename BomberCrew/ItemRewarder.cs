@@ -87,6 +87,7 @@ public class ItemRewarder
         try
         {
             Plugin.BepinLogger.LogMessage($"Applying item: {item.Name} ({item.Category})");
+            ItemNotifications.Show(item.Name);
 
             switch (item.Category)
             {
@@ -221,14 +222,63 @@ public class ItemRewarder
     };
 
     /// <summary>
-    /// Expected payload: "{lineId}:{tierCount}" (tierCount is informational/defensive only -
-    /// ProgressiveLines is the source of truth for actual tier names). Each copy received moves
-    /// the line up one tier, applied fleet-wide to every requirement slot whose BomberUpgradeType
-    /// matches - e.g. every copy of "Progressive EngineStandard" upgrades all 4 engines at once.
-    /// A persistent per-line counter (ArchipelagoData.ProgressiveUpgradeCounts) tracks how many
-    /// tiers have been received so far, since the save data only records what's currently equipped
-    /// and switching to a different parallel line (e.g. Armoured after Standard) would otherwise
-    /// make the current tier ambiguous.
+    /// Lines whose Mk1 tier is exactly what the bomber already starts with by default (see
+    /// tools/gen_item_table.py's SLOTS default column) - the player never needs an Archipelago
+    /// item to obtain that first tier since they already own it, so it counts as unlocked from
+    /// the start. Keep in sync with tools/gen_item_table.py's DEFAULT_UNLOCKED_LINES, which
+    /// derives the same set and uses it to leave that tier's copy out of the item pool.
+    /// </summary>
+    private static readonly HashSet<string> DefaultUnlockedLines = new()
+    {
+        "EngineStandard", "GunTurret303x2", "Electrical", "Hydraulic", "Radar", "EquipmentRack", "OxygenTank", "FuelTank",
+    };
+
+    /// <summary>
+    /// Reverse lookup from an exact upgrade asset name (e.g. "EngineArmouredMk2") to which
+    /// progressive line it belongs to and its 0-based tier index within that line. Built once
+    /// from ProgressiveLines.
+    /// </summary>
+    private static readonly Dictionary<string, (string LineId, int TierIndex)> UpgradeNameToLine =
+        ProgressiveLines
+            .SelectMany(kv => kv.Value.Tiers.Select((tierName, tierIndex) => (tierName, kv.Key, tierIndex)))
+            .ToDictionary(x => x.tierName, x => (x.Key, x.tierIndex));
+
+    /// <summary>
+    /// The highest tier unlocked so far for a progressive line, counting DefaultUnlockedLines'
+    /// implicit tier-1 unlock even before any item has been received for that line.
+    /// </summary>
+    private static int GetUnlockedTierCount(string lineId)
+    {
+        if (ArchipelagoClient.ServerData.ProgressiveUpgradeCounts.TryGetValue(lineId, out int count)) return count;
+        return DefaultUnlockedLines.Contains(lineId) ? 1 : 0;
+    }
+
+    /// <summary>
+    /// True if the given exact upgrade asset name has been unlocked for purchase - i.e. its
+    /// progressive line's tier count (received via Archipelago, plus any default-unlocked first
+    /// tier) has reached at least this tier. Since the unlock counter only ever grows, any tier at
+    /// or below the highest one received stays unlocked forever, so the player can freely switch
+    /// back and forth between tiers (and between parallel lines, e.g. Standard/Armoured/Light
+    /// engines) via the shop. Used by ShopHooks to gate whether a shop purchase attempt is allowed
+    /// to actually install the part.
+    /// </summary>
+    public static bool IsProgressiveUpgradeUnlocked(string upgradeName)
+    {
+        if (upgradeName == null || !UpgradeNameToLine.TryGetValue(upgradeName, out var entry)) return false;
+
+        return entry.TierIndex + 1 <= GetUnlockedTierCount(entry.LineId);
+    }
+
+    /// <summary>
+    /// Expected payload: "{lineId}:{copiesInPool}" (copiesInPool is informational/defensive only -
+    /// ProgressiveLines is the source of truth for actual tier names). Each copy received unlocks
+    /// the line's next tier for purchase in the bomber upgrade shop (see ShopHooks.
+    /// AttemptPurchasePrefix and IsProgressiveUpgradeUnlocked) - it does NOT install anything by
+    /// itself. A persistent per-line counter (ArchipelagoData.ProgressiveUpgradeCounts) tracks the
+    /// highest tier unlocked so far, starting from 1 instead of 0 for DefaultUnlockedLines; since
+    /// it only ever grows, the player can buy (and later switch back to) any already-unlocked
+    /// tier, on any slot of the matching type, any number of times, including switching between
+    /// parallel lines (e.g. Armoured after Standard).
     /// </summary>
     private static void ApplyBomberUpgradeProgressive(string payload)
     {
@@ -240,34 +290,11 @@ public class ItemRewarder
         }
 
         var serverData = ArchipelagoClient.ServerData;
-        serverData.ProgressiveUpgradeCounts.TryGetValue(lineId, out int count);
-        count++;
+        int count = Math.Min(GetUnlockedTierCount(lineId) + 1, line.Tiers.Length);
         serverData.ProgressiveUpgradeCounts[lineId] = count;
 
-        int tierIndex = Math.Min(count, line.Tiers.Length) - 1;
-        string upgradeName = line.Tiers[tierIndex];
-
-        var upgrade = BomberUpgradeCatalogueLoader.Instance?.GetCatalogue()?.GetByName(upgradeName);
-        var bomberConfig = SaveDataContainer.Instance?.Get()?.GetCurrentBomber();
-        if (upgrade == null || bomberConfig == null)
-        {
-            Plugin.BepinLogger.LogWarning($"ApplyBomberUpgradeProgressive: could not resolve '{upgradeName}' or the active bomber.");
-            return;
-        }
-
-        var requirements = GameFlow.Instance?.GetGameMode()?.GetBomberRequirements()?.GetRequirements();
-        if (requirements == null) return;
-
-        int applied = 0;
-        foreach (var requirement in requirements)
-        {
-            if (requirement.GetUpgradeConfig() != line.Type) continue;
-
-            bomberConfig.SetUpgrade(requirement.GetUniquePartId(), upgrade);
-            applied++;
-        }
-
-        ArchipelagoConsole.LogMessage($"Progressive '{lineId}' tier {tierIndex + 1}/{line.Tiers.Length}: installed '{upgrade.GetNameTranslated()}' on {applied} slot(s).");
+        string upgradeName = line.Tiers[count - 1];
+        ArchipelagoConsole.LogMessage($"Unlocked '{lineId}' tier {count}/{line.Tiers.Length} ('{upgradeName}') - buy it in the bomber upgrade shop to install it.");
     }
 
     /// <summary>

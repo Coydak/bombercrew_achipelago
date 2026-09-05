@@ -51,7 +51,14 @@ public readonly struct ItemDefinition
 /// variants like Standard/Armoured/Light engines are separate lines), applied fleet-wide
 /// to every slot of the matching type - receiving another copy moves that line up one
 /// tier (see BomberCrew/ItemRewarder.cs ProgressiveLines for the tier tables). Payload is
-/// "{lineId}:{tierCount}".
+/// "{lineId}:{copiesInPool}".
+///
+/// Lines whose Mk1 tier is what the bomber already starts with by default (EngineStandard,
+/// GunTurret303x2, Electrical, Hydraulic, Radar, EquipmentRack, OxygenTank, FuelTank - see
+/// tools/gen_item_table.py's SLOTS default column) have one fewer copy in the pool than they
+/// have tiers, since that first tier is never actually missing - ItemRewarder.
+/// DefaultUnlockedLines treats it as already unlocked from the start, so no AP item is ever
+/// spent granting the player something they already own.
 ///
 /// Cosmetic Livery skins are intentionally excluded entirely (no items, no locations) - no
 /// gameplay effect either way. The plain BomberUpgrade category (direct "slotId:upgradeName"
@@ -65,10 +72,10 @@ public static class ItemTable
 {
     public static readonly Dictionary<long, ItemDefinition> Items = new()
     {
-        { 9300000, new ItemDefinition(9300000, "Progressive EngineStandard", ItemCategory.BomberUpgradeProgressive, "EngineStandard:5") },
+        { 9300000, new ItemDefinition(9300000, "Progressive EngineStandard", ItemCategory.BomberUpgradeProgressive, "EngineStandard:4") },
         { 9300001, new ItemDefinition(9300001, "Progressive EngineArmoured", ItemCategory.BomberUpgradeProgressive, "EngineArmoured:5") },
         { 9300002, new ItemDefinition(9300002, "Progressive EngineLight", ItemCategory.BomberUpgradeProgressive, "EngineLight:3") },
-        { 9300003, new ItemDefinition(9300003, "Progressive GunTurret303x2", ItemCategory.BomberUpgradeProgressive, "GunTurret303x2:3") },
+        { 9300003, new ItemDefinition(9300003, "Progressive GunTurret303x2", ItemCategory.BomberUpgradeProgressive, "GunTurret303x2:2") },
         { 9300004, new ItemDefinition(9300004, "Progressive GunTurret303x2AmmoFeed", ItemCategory.BomberUpgradeProgressive, "GunTurret303x2AmmoFeed:3") },
         { 9300005, new ItemDefinition(9300005, "Progressive GunTurret303x4", ItemCategory.BomberUpgradeProgressive, "GunTurret303x4:2") },
         { 9300006, new ItemDefinition(9300006, "Progressive GunTurret303x4AmmoFeed", ItemCategory.BomberUpgradeProgressive, "GunTurret303x4AmmoFeed:1") },
@@ -78,13 +85,13 @@ public static class ItemTable
         { 9300010, new ItemDefinition(9300010, "Progressive GunTurret50x2AmmoFeed", ItemCategory.BomberUpgradeProgressive, "GunTurret50x2AmmoFeed:3") },
         { 9300011, new ItemDefinition(9300011, "Progressive FuselageLightweight", ItemCategory.BomberUpgradeProgressive, "FuselageLightweight:5") },
         { 9300012, new ItemDefinition(9300012, "Progressive FuselageArmoured", ItemCategory.BomberUpgradeProgressive, "FuselageArmoured:7") },
-        { 9300013, new ItemDefinition(9300013, "Progressive Electrical", ItemCategory.BomberUpgradeProgressive, "Electrical:5") },
-        { 9300014, new ItemDefinition(9300014, "Progressive Hydraulic", ItemCategory.BomberUpgradeProgressive, "Hydraulic:4") },
-        { 9300015, new ItemDefinition(9300015, "Progressive Radar", ItemCategory.BomberUpgradeProgressive, "Radar:6") },
+        { 9300013, new ItemDefinition(9300013, "Progressive Electrical", ItemCategory.BomberUpgradeProgressive, "Electrical:4") },
+        { 9300014, new ItemDefinition(9300014, "Progressive Hydraulic", ItemCategory.BomberUpgradeProgressive, "Hydraulic:3") },
+        { 9300015, new ItemDefinition(9300015, "Progressive Radar", ItemCategory.BomberUpgradeProgressive, "Radar:5") },
         { 9300016, new ItemDefinition(9300016, "Progressive Extinguisher", ItemCategory.BomberUpgradeProgressive, "Extinguisher:4") },
-        { 9300017, new ItemDefinition(9300017, "Progressive EquipmentRack", ItemCategory.BomberUpgradeProgressive, "EquipmentRack:3") },
-        { 9300018, new ItemDefinition(9300018, "Progressive OxygenTank", ItemCategory.BomberUpgradeProgressive, "OxygenTank:3") },
-        { 9300019, new ItemDefinition(9300019, "Progressive FuelTank", ItemCategory.BomberUpgradeProgressive, "FuelTank:3") },
+        { 9300017, new ItemDefinition(9300017, "Progressive EquipmentRack", ItemCategory.BomberUpgradeProgressive, "EquipmentRack:2") },
+        { 9300018, new ItemDefinition(9300018, "Progressive OxygenTank", ItemCategory.BomberUpgradeProgressive, "OxygenTank:2") },
+        { 9300019, new ItemDefinition(9300019, "Progressive FuelTank", ItemCategory.BomberUpgradeProgressive, "FuelTank:2") },
         { 9300020, new ItemDefinition(9300020, "Progressive FuelTankSelfSealing", ItemCategory.BomberUpgradeProgressive, "FuelTankSelfSealing:1") },
         { 9300021, new ItemDefinition(9300021, "Progressive SurvivalDinghy", ItemCategory.BomberUpgradeProgressive, "SurvivalDinghy:3") },
         { 9300022, new ItemDefinition(9300022, "Progressive SurvivalPigeon", ItemCategory.BomberUpgradeProgressive, "SurvivalPigeon:3") },

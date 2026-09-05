@@ -11,27 +11,35 @@ namespace BC_archipelago.BomberCrew;
 
 /// <summary>
 /// Harmony patches that turn real in-game shop purchase *attempts* (bomber upgrades, crew
-/// equipment) into Archipelago location checks, without actually granting the item locally.
+/// equipment) into Archipelago location checks.
 ///
-/// Buying something in the shop only ever sends the check (so the multiworld knows you reached
-/// that location); it never actually keeps the upgrade/equipment. The only way to actually equip
-/// something is to receive it as an Archipelago item (see ItemRewarder), same as any other item
-/// in the multiworld. This keeps "location" (the check) and "item" (the reward) properly
-/// decoupled instead of the shop just handing you what you paid for.
+/// Attempting a purchase always sends the location check the first time (so the multiworld
+/// knows you reached that location), regardless of whether the purchase is actually allowed to
+/// go through.
 ///
-/// Bomber upgrades replace the original purchase method outright (see AttemptPurchasePrefix) for
-/// any slot/upgrade combo tracked by Archipelago, so the check always sends regardless of the
-/// game's own funds/weight gating; anything untracked (currently: cosmetic Livery) is left alone
-/// and behaves exactly like vanilla. Crew equipment instead always lets the original purchase go
-/// through and then reverts its effects (equip, balance, stock) - there's no equivalent lockout
-/// risk there since crew gear has no weight system.
+/// Bomber upgrades (all progressive - see ItemRewarder.ProgressiveLines) are gated on unlock
+/// state: a slot/upgrade combo can only actually be installed once its progressive line has
+/// received enough Archipelago items to unlock that tier (ItemRewarder.
+/// IsProgressiveUpgradeUnlocked). Once unlocked, a tier stays unlocked forever, so the player can
+/// freely buy it (or any lower tier of that line, or a different parallel line, e.g. Armoured
+/// after Standard) on any compatible slot, any number of times, through the normal vanilla
+/// purchase flow (real funds/weight checks, single-slot install) - see AttemptPurchasePrefix.
+/// Anything untracked (currently: cosmetic Livery) is left alone and behaves exactly like
+/// vanilla.
+///
+/// Crew equipment isn't tiered, so it keeps its original design: the original purchase always
+/// goes through and is then reverted (equip, balance, stock) - only receiving the item via
+/// Archipelago actually equips it fleet-wide.
 /// </summary>
 public static class ShopHooks
 {
     private static bool patched;
 
-    private static readonly Color CheckedTint = new(0.4f, 1f, 0.4f);
-    private static readonly Color UncheckedTint = Color.white;
+    // Bomber upgrade rows have three distinct states; crew equipment rows (no unlock-gated
+    // install step) only ever use NotPurchasedTint/PurchasedTint.
+    private static readonly Color NotPurchasedTint = Color.white;
+    private static readonly Color PurchasedTint = new(1f, 0.75f, 0.25f);
+    private static readonly Color EquipableTint = new(0.4f, 1f, 0.4f);
 
     private readonly struct EquipmentPurchaseState
     {
@@ -100,10 +108,21 @@ public static class ShopHooks
         typeof(CrewQuartersItemSelectButton).GetField("m_itemName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
     /// <summary>
-    /// Tints a shop row's name text green once its location has already been checked, white
-    /// otherwise, so the player can tell at a glance which purchases still send a new check
-    /// without needing to read a console message. Untracked combos (e.g. cosmetic Livery) are
-    /// left with their normal vanilla appearance.
+    /// Tints a shop row's name text so the player can tell its state at a glance without reading
+    /// a console message. Untracked combos (e.g. cosmetic Livery) are left with their normal
+    /// vanilla appearance.
+    ///
+    /// Bomber upgrade rows have three distinct states:
+    /// - white: purchase never attempted (no check sent yet for this exact slot/upgrade combo).
+    /// - orange: purchase attempted (check sent), but the progressive line hasn't unlocked this
+    ///   tier yet via a received Archipelago item - buying does nothing until it's unlocked.
+    /// - green: unlocked - this tier can actually be bought and installed on this slot right now
+    ///   (see ItemRewarder.IsProgressiveUpgradeUnlocked / ShopHooks.AttemptPurchasePrefix).
+    /// Unlocked takes priority over checked, since an item can unlock a tier before the player
+    /// ever attempts to buy that specific slot/tier combo.
+    ///
+    /// Crew equipment rows have no unlock-gated install step (buying always reverts; only
+    /// receiving the item actually equips it fleet-wide), so they only ever show white/orange.
     ///
     /// Patched here rather than on BomberUpgradePurchaseableSelection/CrewQuartersItemSelectButton's
     /// own Refresh() because SelectableFilterButton.SetUpGraphics is the actual last writer of the
@@ -130,7 +149,9 @@ public static class ShopHooks
                 long locationId = LocationTable.GetShopPurchaseLocation($"{requirement.GetUniquePartId()}:{fittable.name}");
                 if (locationId < 0) return; // untracked (e.g. cosmetic Livery) - leave vanilla appearance alone
 
-                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? CheckedTint : UncheckedTint);
+                bool purchased = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
+                bool equipable = ItemRewarder.IsProgressiveUpgradeUnlocked(fittable.name);
+                SetTextColor(nameSetter, equipable ? EquipableTint : purchased ? PurchasedTint : NotPurchasedTint);
                 return;
             }
 
@@ -144,7 +165,7 @@ public static class ShopHooks
                 long locationId = LocationTable.GetShopPurchaseLocation($"{equipment.GetGearType()}:{equipment.name}");
                 if (locationId < 0) return;
 
-                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? CheckedTint : UncheckedTint);
+                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? PurchasedTint : NotPurchasedTint);
             }
         }
         catch (System.Exception ex)
@@ -159,19 +180,18 @@ public static class ShopHooks
 
     /// <summary>
     /// Replaces AttemptPurchase (returns false to skip the original) for slot/upgrade
-    /// combinations that ARE tracked by Archipelago, instead of just reverting its effects
-    /// afterward. The original method gates on funds AND a weight budget (heavy equipment needs
-    /// enough installed engines to carry it) computed from the bomber's *current* state - once
-    /// any slot is force-installed by a received Archipelago item into an overweight
-    /// configuration (which bypasses that gate entirely, see ItemRewarder), every future purchase
-    /// attempt for ANY slot would silently fail the weight check and never send its location
-    /// check again. Reimplementing the check-sending ourselves, with no funds/weight involved at
-    /// all, avoids that lockout.
+    /// combinations that ARE tracked by Archipelago, in order to always send the location check
+    /// on attempt regardless of the vanilla funds/weight gate - but whether the part is actually
+    /// installed now depends on whether it's been unlocked via a received Archipelago item
+    /// (ItemRewarder.IsProgressiveUpgradeUnlocked). If it has, the prefix returns true and lets
+    /// the original method run normally (real funds/weight checks apply, single slot installs,
+    /// same as vanilla) - so the player can freely buy back any previously-unlocked tier, on any
+    /// slot, any number of times, including switching between parallel lines (e.g. Armoured after
+    /// Standard). If it hasn't been unlocked yet, the check still sends but nothing installs.
     ///
     /// Anything NOT tracked by Archipelago (currently: cosmetic Livery, which has no items or
-    /// locations at all) is left completely alone - the prefix returns true and the vanilla
-    /// method runs normally, so it can still be bought and equipped like any untouched part of
-    /// the game.
+    /// locations at all) is left completely alone - the prefix returns true immediately and the
+    /// vanilla method runs normally.
     /// </summary>
     [HarmonyPrefix]
     [HarmonyPatch(typeof(BomberUpgradeScreenController), "AttemptPurchase")]
@@ -199,14 +219,21 @@ public static class ShopHooks
             }
 
             bool alreadyChecked = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
-            ArchipelagoConsole.LogMessage(alreadyChecked
-                ? $"Already checked '{upgradeName}' ({slotId}) before - no new check sent."
-                : $"Checked '{upgradeName}' ({slotId}) for the first time - receive it via Archipelago to actually install it.");
-            Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{slotId}'. Sending location check {locationId}.");
-            Plugin.ArchipelagoClient.CheckLocation(locationId);
+            if (!alreadyChecked)
+            {
+                ArchipelagoConsole.LogMessage($"Checked '{upgradeName}' ({slotId}) for the first time.");
+                Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{slotId}'. Sending location check {locationId}.");
+                Plugin.ArchipelagoClient.CheckLocation(locationId);
+            }
 
+            if (ItemRewarder.IsProgressiveUpgradeUnlocked(upgradeName))
+            {
+                return true; // unlocked via Archipelago - let vanilla purchase/install run normally (real funds/weight checks)
+            }
+
+            ArchipelagoConsole.LogMessage($"'{upgradeName}' ({slotId}) isn't unlocked yet - receive it via Archipelago first.");
             __instance.Refresh(); // keep the shop UI in sync even though nothing was actually bought
-            return false; // tracked slot: buying never actually installs it, only receiving it via AP does
+            return false; // not yet unlocked: buying never actually installs it
         }
         catch (System.Exception ex)
         {
