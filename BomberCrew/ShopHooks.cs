@@ -12,30 +12,20 @@ namespace BC_archipelago.BomberCrew;
 /// Harmony patches that turn real in-game shop purchase *attempts* (bomber upgrades, crew
 /// equipment) into Archipelago location checks, without actually granting the item locally.
 ///
-/// Buying something in the shop only sends the check (so the multiworld knows you reached that
-/// location) and is then fully reverted: the slot/crewman is put back to whatever it was
-/// equipped with before, and the money/stock spent is refunded. The only way to actually equip
-/// an upgrade or piece of gear is to receive it as an Archipelago item (see ItemRewarder), same
-/// as any other item in the multiworld. This keeps "location" (the check) and "item" (the
-/// reward) properly decoupled instead of the shop just handing you what you paid for.
+/// Buying something in the shop only ever sends the check (so the multiworld knows you reached
+/// that location); it never actually keeps the upgrade/equipment. The only way to actually equip
+/// something is to receive it as an Archipelago item (see ItemRewarder), same as any other item
+/// in the multiworld. This keeps "location" (the check) and "item" (the reward) properly
+/// decoupled instead of the shop just handing you what you paid for.
+///
+/// Bomber upgrades replace the original purchase method outright (see AttemptPurchasePrefix) so
+/// the check always sends regardless of the game's own funds/weight gating. Crew equipment
+/// instead lets the original purchase go through and then reverts its effects (equip, balance,
+/// stock) - there's no equivalent lockout risk there since crew gear has no weight system.
 /// </summary>
 public static class ShopHooks
 {
     private static bool patched;
-
-    private readonly struct BomberPurchaseState
-    {
-        public readonly string SlotId;
-        public readonly string OldUpgradeName;
-        public readonly int BalanceBefore;
-
-        public BomberPurchaseState(string slotId, string oldUpgradeName, int balanceBefore)
-        {
-            SlotId = slotId;
-            OldUpgradeName = oldUpgradeName;
-            BalanceBefore = balanceBefore;
-        }
-    }
 
     private readonly struct EquipmentPurchaseState
     {
@@ -66,56 +56,51 @@ public static class ShopHooks
     // Bomber upgrades
     // ---------------------------------------------------------------------
 
+    /// <summary>
+    /// Replaces AttemptPurchase entirely (returns false to skip the original) instead of just
+    /// reverting its effects afterward. The original method gates on funds AND a weight budget
+    /// (heavy equipment needs enough installed engines to carry it) computed from the bomber's
+    /// *current* state - once any slot is force-installed by a received Archipelago item into an
+    /// overweight configuration (which bypasses that gate entirely, see ItemRewarder), every
+    /// future purchase attempt for ANY slot would silently fail the weight check and never send
+    /// its location check again. Reimplementing the check-sending ourselves, with no funds/weight
+    /// involved at all, avoids that lockout - buying in the shop should always be able to send a
+    /// check, since it never actually keeps the upgrade anyway.
+    /// </summary>
     [HarmonyPrefix]
     [HarmonyPatch(typeof(BomberUpgradeScreenController), "AttemptPurchase")]
-    private static void AttemptPurchasePrefix(
+    private static bool AttemptPurchasePrefix(
+        BomberUpgradeScreenController __instance,
         BomberRequirements.BomberEquipmentRequirement ___m_currentlySelectedRequirement,
-        out BomberPurchaseState __state)
-    {
-        __state = default;
-
-        string slotId = ___m_currentlySelectedRequirement?.GetUniquePartId();
-        if (slotId == null) return;
-
-        string oldUpgrade = SaveDataContainer.Instance?.Get()?.GetCurrentBomber()?.GetUpgradeFor(slotId);
-        int balanceBefore = SaveDataContainer.Instance?.Get()?.GetBalance() ?? 0;
-        __state = new BomberPurchaseState(slotId, oldUpgrade, balanceBefore);
-    }
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(BomberUpgradeScreenController), "AttemptPurchase")]
-    private static void AttemptPurchasePostfix(
-        EquipmentUpgradeFittableBase ___m_currentlySelectedEquippable,
-        BomberPurchaseState __state)
+        EquipmentUpgradeFittableBase ___m_currentlySelectedEquippable)
     {
         try
         {
-            if (__state.SlotId == null || ___m_currentlySelectedEquippable == null) return;
+            string slotId = ___m_currentlySelectedRequirement?.GetUniquePartId();
+            if (slotId == null || ___m_currentlySelectedEquippable == null) return true; // nothing selected, let vanilla handle it
 
-            var saveData = SaveDataContainer.Instance?.Get();
-            var bomberConfig = saveData?.GetCurrentBomber();
-            if (saveData == null || bomberConfig == null) return;
-
+            var bomberConfig = SaveDataContainer.Instance?.Get()?.GetCurrentBomber();
             string upgradeName = ___m_currentlySelectedEquippable.name;
-            if (bomberConfig.GetUpgradeFor(__state.SlotId) != upgradeName) return; // purchase didn't go through
+            if (bomberConfig != null && bomberConfig.GetUpgradeFor(slotId) == upgradeName)
+            {
+                return false; // already equipped, matches vanilla's own no-op for that case
+            }
 
-            // Revert: the purchase attempt only sends a check, it never actually keeps the upgrade.
-            var revertTo = string.IsNullOrEmpty(__state.OldUpgradeName)
-                ? null
-                : BomberUpgradeCatalogueLoader.Instance?.GetCatalogue()?.GetByName(__state.OldUpgradeName);
-            bomberConfig.SetUpgrade(__state.SlotId, revertTo);
-            saveData.AddBalance(__state.BalanceBefore - saveData.GetBalance());
+            long locationId = LocationTable.GetShopPurchaseLocation($"{slotId}:{upgradeName}");
+            if (locationId >= 0)
+            {
+                ArchipelagoConsole.LogMessage($"Checked '{upgradeName}' ({slotId}) - receive it via Archipelago to actually install it.");
+                Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{slotId}'. Sending location check {locationId}.");
+                Plugin.ArchipelagoClient.CheckLocation(locationId);
+            }
 
-            long locationId = LocationTable.GetShopPurchaseLocation($"{__state.SlotId}:{upgradeName}");
-            if (locationId < 0) return;
-
-            ArchipelagoConsole.LogMessage($"Checked '{upgradeName}' ({__state.SlotId}) - receive it via Archipelago to actually install it.");
-            Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{__state.SlotId}'. Sending location check {locationId}.");
-            Plugin.ArchipelagoClient.CheckLocation(locationId);
+            __instance.Refresh(); // keep the shop UI in sync even though nothing was actually bought
+            return false; // skip the original entirely: no funds/weight gate, no install, nothing to revert
         }
         catch (System.Exception ex)
         {
-            Plugin.BepinLogger.LogError($"Error in ShopHooks.AttemptPurchasePostfix: {ex}");
+            Plugin.BepinLogger.LogError($"Error in ShopHooks.AttemptPurchasePrefix: {ex}");
+            return false;
         }
     }
 

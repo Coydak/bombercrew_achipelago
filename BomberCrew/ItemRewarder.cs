@@ -16,31 +16,52 @@ namespace BC_archipelago.BomberCrew;
 /// </summary>
 public class ItemRewarder
 {
+    private readonly object queueLock = new();
     private readonly Queue<ItemDefinition> pendingItems = new();
+    private readonly Queue<ItemDefinition> instantItems = new();
 
     /// <summary>
-    /// Enqueues an item to be rewarded. If it is safe to apply immediately, it is applied right away.
-    /// Repair items are meaningful only while a bomber is actually in flight, so they bypass the
-    /// base-only queue and are applied (or discarded as a no-op) the moment they arrive.
+    /// Enqueues an item to be rewarded. Received items arrive on the Archipelago client's own
+    /// network thread (Reward is called from ArchipelagoClient.OnItemReceived, itself invoked by
+    /// the websocket's receive callback) - this must NEVER touch Unity/game state directly here,
+    /// only queue. Actually applying an item (Apply()) always happens from Update() instead,
+    /// which Unity guarantees runs on the main thread; calling Unity APIs off that thread causes
+    /// native access violations (reproduced and confirmed crashing the game during development -
+    /// Access Violation in ItemRewarder.Apply, called straight from the websocket message thread).
     /// </summary>
     public void Reward(ItemDefinition item)
     {
-        if (item.Category == ItemCategory.InstantRepair)
+        lock (queueLock)
         {
-            Apply(item);
-            return;
+            if (item.Category == ItemCategory.InstantRepair)
+                instantItems.Enqueue(item);
+            else
+                pendingItems.Enqueue(item);
         }
-
-        pendingItems.Enqueue(item);
-        TryApplyPending();
     }
 
     /// <summary>
-    /// Call this periodically (e.g. from the plugin Update loop) to flush the item queue
-    /// once the player is back at base.
+    /// Call this every frame from the plugin's Update loop (main thread - see Reward's remarks).
+    /// Repair items are meaningful only while a bomber is actually in flight, so they bypass the
+    /// base-only queue and are applied (or discarded as a no-op) as soon as this next runs.
     /// </summary>
     public void Update()
     {
+        List<ItemDefinition> instant = null;
+        lock (queueLock)
+        {
+            if (instantItems.Count > 0)
+            {
+                instant = new List<ItemDefinition>(instantItems);
+                instantItems.Clear();
+            }
+        }
+
+        if (instant != null)
+        {
+            foreach (var item in instant) Apply(item);
+        }
+
         TryApplyPending();
     }
 
@@ -48,9 +69,15 @@ public class ItemRewarder
     {
         if (!GameState.CanApplyItemsSafely) return;
 
-        while (pendingItems.Count > 0)
+        while (true)
         {
-            var item = pendingItems.Dequeue();
+            ItemDefinition item;
+            lock (queueLock)
+            {
+                if (pendingItems.Count == 0) break;
+                item = pendingItems.Dequeue();
+            }
+
             Apply(item);
         }
     }

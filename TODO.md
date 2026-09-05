@@ -94,7 +94,42 @@ Remaining polish, not blocking:
 - Itempool/classification/goal choices above are v1 opinions, not load-bearing — revisit
   if playtesting says otherwise.
 
-### 2. Not yet real items (lower priority, noted here so it isn't forgotten)
+### 2. Two real bugs found and fixed this session
+
+- **Thread-safety crash (serious, fixed)**: `ItemRewarder.Reward()` used to call `Apply()`
+  directly for some categories. Received items arrive on the Archipelago client's own
+  network thread (`OnItemReceived`, invoked from the websocket's receive callback), and
+  `Apply()` touches Unity/game APIs - calling those off the main thread caused a real
+  native access violation crash (reproduced twice, confirmed via `crash.dmp`/`error.log`
+  next to `BomberCrew.exe`: `ItemRewarder.Apply` called straight from the websocket message
+  thread). Fixed: `Reward()` now only ever enqueues (into `pendingItems` or a new
+  `instantItems` queue for InstantRepair), and `Apply()` only ever runs from `Update()`
+  (main thread), with a `lock` around the queues for thread safety. Verified: no crash
+  under a heavy burst of real received items after the fix.
+- **Bomber-upgrade weight lockout (serious, fixed)**: the vanilla shop's
+  `BomberUpgradeScreenController.AttemptPurchase()` gates on a weight budget (heavy
+  equipment needs enough installed engines to carry it) computed from the bomber's
+  *current* state. Since items received via Archipelago (especially progressive upgrades)
+  install directly and bypass that check, the bomber could end up in an overweight state
+  that then made `AttemptPurchase()` silently fail for ANY slot, permanently blocking the
+  shop-purchase-as-location mechanism. Fixed: `ShopHooks.AttemptPurchasePrefix` now
+  replaces the bomber-upgrade purchase method entirely (`return false`, skips the
+  original) instead of letting it run and reverting after - the check always sends
+  regardless of funds/weight, nothing is ever actually installed so there's nothing to
+  revert. Crew equipment purchases are unaffected (still revert-after-the-fact) since
+  there's no weight system on that side. Verified: bomber-upgrade purchases still send
+  their check correctly even with several heavy progressive upgrades already installed.
+
+### 3. Known bug, not yet fixed
+
+- `ApplyCrewEquipment` throws a caught `NullReferenceException` for some received
+  CrewEquipment items (seen for `HeadgearCapService` and `BootsElectricallyHeated` in
+  testing) - doesn't crash (caught in `ItemRewarder.Apply`'s try/catch) but the item
+  silently fails to equip. Not yet root-caused; suspect `GameState.GetAliveCrewmen()`
+  or the crewman/avatar pairing being in a stale state at the moment of application.
+  Needs investigation.
+
+### 4. Not yet real items (lower priority, noted here so it isn't forgotten)
 
 - `MissionUnlock` payload values are chapter *key* missions only — fine as-is per current
   design, no action needed unless design changes.
