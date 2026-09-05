@@ -8,6 +8,68 @@ This mod connects your game to an Archipelago multi-world room, receives items f
 
 ---
 
+## Pour Red : installer le mod et jouer au multirando
+
+Ce guide couvre uniquement ta partie : jouer à Bomber Crew connecté à une room Archipelago.
+Quelqu'un d'autre s'occupe de générer/héberger la seed - tu n'as besoin que du host/port/slot
+qu'il te donnera.
+
+### 1. Installer BepInEx 5 (le chargeur de mods)
+
+1. Télécharge la dernière release **BepInEx 5** pour Unity :
+   <https://github.com/BepInEx/BepInEx/releases>
+   - Prends la version **x64** ou **x86** qui correspond à ton exécutable du jeu (x64 dans la
+     grande majorité des cas).
+2. Extrais le zip directement dans le dossier du jeu (celui qui contient `BomberCrew.exe`).
+3. Lance le jeu une fois pour que BepInEx crée ses dossiers (`BepInEx/`, `doorstop_config.ini`),
+   puis referme-le.
+
+### 2. Installer le mod
+
+1. Récupère le mod (`BC_archipelago_mod.zip`) depuis la page des
+   [releases GitHub](https://github.com/Coydak/bombercrew_achipelago/releases) du projet.
+2. Extrais son contenu dans :
+   ```
+   Bomber Crew/BepInEx/plugins/BC_archipelago/
+   ```
+3. Lance le jeu - un petit label du mod doit apparaître en haut à gauche de l'écran.
+
+### 3. Se connecter
+
+Dans le jeu, remplis les champs affichés à l'écran :
+- **Host** : l'adresse donnée par la personne qui héberge la room
+- **Player Name** : ton nom de slot (celui utilisé dans ton YAML)
+- **Password** : si la room en a un, sinon laisse vide
+
+Puis clique **Connect**.
+
+> **Si la room est hébergée sur archipelago.gg** (adresse du type `archipelago.gg:XXXXX`), le
+> jeu ne peut **pas** s'y connecter directement (vieux moteur, pas de support TLS moderne). Il
+> te faut un petit relais local :
+> 1. Récupère `ap_relay.zip` depuis les [releases GitHub](https://github.com/Coydak/bombercrew_achipelago/releases).
+> 2. Installe [Python 3](https://www.python.org/downloads/) (coche "Add to PATH" à l'installation).
+> 3. Ouvre un terminal dans le dossier extrait et lance `pip install websockets` (une seule fois).
+> 4. Double-clique `run_ap_relay.bat`, colle l'adresse donnée par le site quand demandé, laisse
+>    la fenêtre ouverte.
+> 5. Dans le mod, connecte-toi à `localhost:39000` (pas à l'adresse archipelago.gg directement).
+>
+> Si la room est hébergée par quelqu'un chez lui (`ArchipelagoServer.exe`, pas archipelago.gg),
+> tu n'as besoin de rien de tout ça - connexion directe comme au-dessus.
+
+### 4. Jouer
+
+- Les items reçus s'affichent en haut à droite (toast) et dans le mini-journal en haut de
+  l'écran.
+- Dans les boutiques (upgrades bomber, quartiers d'équipage), les objets sont colorés selon leur
+  état : blanc = jamais tenté, orange = tenté mais pas encore débloqué, bleu = débloqué mais
+  jamais tenté (achète-le, ça envoie un nouveau check ET l'installe/l'équipe), vert = débloqué et
+  déjà tenté (rachat = juste réinstaller/rééquiper, pas de nouveau check).
+- Tu peux librement rééquiper l'équipage ou changer d'upgrade bomber parmi tout ce qui est déjà
+  débloqué, autant de fois que tu veux.
+- Un bouton **Disconnect** apparaît une fois connecté si tu as besoin de te déconnecter.
+
+---
+
 ## Requirements
 
 - **Bomber Crew** (Steam)
