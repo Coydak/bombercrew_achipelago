@@ -75,6 +75,10 @@ public class ItemRewarder
                     ApplyBomberUpgrade(item.Payload);
                     break;
 
+                case ItemCategory.BomberUpgradeProgressive:
+                    ApplyBomberUpgradeProgressive(item.Payload);
+                    break;
+
                 case ItemCategory.CrewEquipment:
                     ApplyCrewEquipment(item.Payload);
                     break;
@@ -154,6 +158,89 @@ public class ItemRewarder
 
         bomberConfig.SetUpgrade(slotId, upgrade);
         ArchipelagoConsole.LogMessage($"Installed bomber upgrade '{upgrade.GetNameTranslated()}' ({slotId}).");
+    }
+
+    /// <summary>
+    /// Ordered lowest-to-highest tier names for each progressive bomber upgrade line. Parallel
+    /// variants (e.g. Standard/Armoured/Light engines) are separate lines, never merged, since
+    /// they're a real gameplay tradeoff rather than a strict upgrade path. Keep this in sync with
+    /// tools/gen_item_table.py's PROGRESSIVE_LINES (that's what generates ItemTable's entries).
+    /// </summary>
+    private static readonly Dictionary<string, (BomberUpgradeType Type, string[] Tiers)> ProgressiveLines = new()
+    {
+        ["EngineStandard"] = (BomberUpgradeType.Engine, new[] { "EngineStandardMk1", "EngineStandardMk2", "EngineStandardMk3", "EngineStandardMk4", "EngineStandardMk5" }),
+        ["EngineArmoured"] = (BomberUpgradeType.Engine, new[] { "EngineArmouredMk1", "EngineArmouredMk2", "EngineArmouredMk3", "EngineArmouredMk4", "EngineArmouredMk5" }),
+        ["EngineLight"] = (BomberUpgradeType.Engine, new[] { "EngineLightMk1", "EngineLightMk2", "EngineLightMk3" }),
+        ["GunTurret303x2"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret303x2Mk1", "GunTurret303x2Mk2", "GunTurret303x2Mk3" }),
+        ["GunTurret303x2AmmoFeed"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret303x2Mk1_AmmoFeed", "GunTurret303x2Mk2_AmmoFeed", "GunTurret303x2Mk3_AmmoFeed" }),
+        ["GunTurret303x4"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret303x4Mk3", "GunTurret303x4Mk4" }),
+        ["GunTurret303x4AmmoFeed"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret303x4Mk3_AmmoFeed" }),
+        ["GunTurret50x4"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret50x4Mk3", "GunTurret50x4Mk4" }),
+        ["GunTurret50x4AmmoFeed"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret50x4Mk3_AmmoFeed" }),
+        ["GunTurret50x2"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret50x2Mk1", "GunTurret50x2Mk2", "GunTurret50x2Mk3" }),
+        ["GunTurret50x2AmmoFeed"] = (BomberUpgradeType.GunTurret, new[] { "GunTurret50x2Mk1_AmmoFeed", "GunTurret50x2Mk2_AmmoFeed", "GunTurret50x2Mk3_AmmoFeed" }),
+        ["FuselageLightweight"] = (BomberUpgradeType.FuselageMain, new[] { "FuselageLightweightMk1", "FuselageLightweightMk2", "FuselageLightweightMk3", "FuselageLightweightMk4", "FuselageLightweightMk5" }),
+        ["FuselageArmoured"] = (BomberUpgradeType.FuselageMain, new[] { "FuselageArmouredMk1", "FuselageArmouredMk2", "FuselageArmouredMk3", "FuselageArmouredMk4", "FuselageArmouredMk5", "FuselageArmouredMk6", "FuselageArmouredMk7" }),
+        ["Electrical"] = (BomberUpgradeType.Electrical, new[] { "ElectricalSystemMk1", "ElectricalSystemMk2", "ElectricalSystemMk3", "ElectricalSystemMk4", "ElectricalSystemMk5" }),
+        ["Hydraulic"] = (BomberUpgradeType.Hyrdaulic, new[] { "HydraulicSystemMk1", "HydraulicSystemMk2", "HydraulicSystemMk3", "HydraulicSystemMk4" }),
+        ["Radar"] = (BomberUpgradeType.Radar, new[] { "RadarMk1", "RadarMk2", "RadarMk3", "RadarMk4", "RadarMk5", "RadarMk6" }),
+        ["Extinguisher"] = (BomberUpgradeType.Extinguisher, new[] { "ExtinguisherMk1", "ExtinguisherMk2", "ExtinguisherMk3", "ExtinguisherMk4" }),
+        ["EquipmentRack"] = (BomberUpgradeType.EquipmentRack, new[] { "EquipmentRack1", "EquipmentRack2", "EquipmentRack3" }),
+        ["OxygenTank"] = (BomberUpgradeType.OxygenTank, new[] { "OxygenTankMk1", "OxygenTankMk2", "OxygenTankMk3" }),
+        ["FuelTank"] = (BomberUpgradeType.FuelTank, new[] { "FuelTankMk1", "FuelTankMk2", "FuelTankMk3" }),
+        ["FuelTankSelfSealing"] = (BomberUpgradeType.FuelTank, new[] { "FuelTankSelfSealingMk1" }),
+        ["SurvivalDinghy"] = (BomberUpgradeType.SurvivalDinghy, new[] { "DinghyMk1", "DinghyMk2", "DinghyMk3" }),
+        ["SurvivalPigeon"] = (BomberUpgradeType.SurvivalPigeon, new[] { "PigeonMk1", "PigeonMk2", "PigeonMk3" }),
+    };
+
+    /// <summary>
+    /// Expected payload: "{lineId}:{tierCount}" (tierCount is informational/defensive only -
+    /// ProgressiveLines is the source of truth for actual tier names). Each copy received moves
+    /// the line up one tier, applied fleet-wide to every requirement slot whose BomberUpgradeType
+    /// matches - e.g. every copy of "Progressive EngineStandard" upgrades all 4 engines at once.
+    /// A persistent per-line counter (ArchipelagoData.ProgressiveUpgradeCounts) tracks how many
+    /// tiers have been received so far, since the save data only records what's currently equipped
+    /// and switching to a different parallel line (e.g. Armoured after Standard) would otherwise
+    /// make the current tier ambiguous.
+    /// </summary>
+    private static void ApplyBomberUpgradeProgressive(string payload)
+    {
+        string lineId = payload?.Split(':')[0];
+        if (lineId == null || !ProgressiveLines.TryGetValue(lineId, out var line))
+        {
+            Plugin.BepinLogger.LogWarning($"ApplyBomberUpgradeProgressive: unknown line '{payload}'.");
+            return;
+        }
+
+        var serverData = ArchipelagoClient.ServerData;
+        serverData.ProgressiveUpgradeCounts.TryGetValue(lineId, out int count);
+        count++;
+        serverData.ProgressiveUpgradeCounts[lineId] = count;
+
+        int tierIndex = Math.Min(count, line.Tiers.Length) - 1;
+        string upgradeName = line.Tiers[tierIndex];
+
+        var upgrade = BomberUpgradeCatalogueLoader.Instance?.GetCatalogue()?.GetByName(upgradeName);
+        var bomberConfig = SaveDataContainer.Instance?.Get()?.GetCurrentBomber();
+        if (upgrade == null || bomberConfig == null)
+        {
+            Plugin.BepinLogger.LogWarning($"ApplyBomberUpgradeProgressive: could not resolve '{upgradeName}' or the active bomber.");
+            return;
+        }
+
+        var requirements = GameFlow.Instance?.GetGameMode()?.GetBomberRequirements()?.GetRequirements();
+        if (requirements == null) return;
+
+        int applied = 0;
+        foreach (var requirement in requirements)
+        {
+            if (requirement.GetUpgradeConfig() != line.Type) continue;
+
+            bomberConfig.SetUpgrade(requirement.GetUniquePartId(), upgrade);
+            applied++;
+        }
+
+        ArchipelagoConsole.LogMessage($"Progressive '{lineId}' tier {tierIndex + 1}/{line.Tiers.Length}: installed '{upgrade.GetNameTranslated()}' on {applied} slot(s).");
     }
 
     /// <summary>

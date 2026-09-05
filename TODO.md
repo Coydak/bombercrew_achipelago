@@ -24,11 +24,25 @@ Status snapshot as of the session that built and verified the real `.apworld`
     (see session transcript) to keep location (check) and item (reward) properly decoupled,
     since vanilla Bomber Crew has no "owned but not equipped" inventory concept to piggyback
     on and buy-without-equipping isn't a thing in the original UI.
-  - **Total: 387 locations.**
-- **`ItemTable.cs`**: 370 items — 289 BomberUpgrade + 54 CrewEquipment (same catalogue
-  as the shop locations, but received via AP instead of bought) + 27 utility items
-  (Funds/Intel tiers, per-skill CrewSkillXp, per-chapter MissionUnlock "clearance",
-  InstantRepair, InstantHeal).
+  - **Total: 388 locations** (45 mission + 343 shop).
+- **`ItemTable.cs`**: 167 items — 23 `BomberUpgradeProgressive` (fleet-wide, tiered) + 63
+  cosmetic Livery `BomberUpgrade` (still individual per-slot) + 54 CrewEquipment + 27
+  utility items (Funds/Intel tiers, per-skill CrewSkillXp, per-chapter MissionUnlock
+  "clearance", InstantRepair, InstantHeal).
+  - **Progressive bomber upgrades**: non-cosmetic upgrades (engines, turrets, fuselage,
+    electrical/hydraulic/radar/etc.) are no longer individual per-slot-per-mark items.
+    Each upgrade *line* (parallel variants like Standard/Armoured/Light engines are
+    separate lines, never merged - see `BomberCrew/ItemRewarder.cs` `ProgressiveLines`)
+    is ONE item; receiving another copy bumps that line up one tier, applied fleet-wide
+    to every slot of the matching type at once (e.g. one "Progressive EngineStandard"
+    upgrades all 4 engines together). A persistent per-line counter
+    (`ArchipelagoData.ProgressiveUpgradeCounts`) tracks tiers received, since save data
+    only records what's currently equipped. The shop-purchase locations
+    (`ShopPurchaseByKey`) are UNCHANGED - still one location per specific (slot, exact
+    mark) combo; only how you *receive* upgrades as items changed, not how buying them
+    sends a check. Cosmetic Livery items are unaffected (no tiering concept for skins).
+    Verified live: two copies of "Progressive EngineStandard" correctly installed Mk1
+    then Mk2 on all 4 engines, no crash.
 - **`ItemRewarder.cs`**: all 8 categories implemented against real game APIs
   (`BomberUpgradeConfig.SetUpgrade`, `Crewman.SetEquippedFor`, `SaveData.SetMissionPlayed`,
   `Repairable.Repair`, `Crewman.MagicallyResurrect`). Verified live.
@@ -53,10 +67,12 @@ Status snapshot as of the session that built and verified the real `.apworld`
 - `__init__.py`: single flat "Menu" region containing all 388 real locations, no item-gated
   access rules (deliberate — see the comment there and the reasoning that was previously
   here: the real game enforces chapter/economy gating independently of AP already).
-  Itempool = 370 real items + filler copies padded up to 388. Classification: Livery-slot
-  BomberUpgrade items and the 17 utility items (Funds/Intel/CrewSkillXp/InstantRepair/
-  InstantHeal) are `filler`; everything else (non-cosmetic BomberUpgrade, CrewEquipment,
-  MissionUnlock) is `useful`.
+  Itempool = 167 unique item names, with `BomberUpgradeProgressive` items placed as one
+  copy per tier (payload `"{lineId}:{tierCount}"` tells `create_items()` how many - see
+  `apworld_src/bomber_crew/__init__.py`), so the base pool is ~222 items, then padded with
+  filler copies up to 388. Classification: Livery-slot BomberUpgrade items and the 17
+  utility items (Funds/Intel/CrewSkillXp/InstantRepair/InstantHeal) are `filler`; everything
+  else (BomberUpgradeProgressive, CrewEquipment, MissionUnlock) is `useful`.
 - **Goal**: a dedicated `address=None` "Victory" event location gated on
   `state.can_reach_location("C08_KEY", player)`. Do NOT lock the Victory event directly onto
   the real `C08_KEY` location (i.e. `get_location("C08_KEY").place_locked_item(...)`) — that

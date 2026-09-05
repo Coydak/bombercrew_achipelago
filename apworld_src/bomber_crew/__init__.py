@@ -58,7 +58,12 @@ class BomberCrewWorld(World):
         return BomberCrewItem(name, ItemClassification.progression, None, self.player)
 
     def create_items(self) -> None:
-        pool = [self.create_item(name) for name in world_data.ITEM_DATA]
+        pool = []
+        for name, (_, category, payload) in world_data.ITEM_DATA.items():
+            # Progressive bomber upgrades need one copy per tier ("{lineId}:{tierCount}"
+            # payload) - each copy received bumps that line up one tier (see ItemRewarder).
+            copies = int(payload.split(":", 1)[1]) if category == "BomberUpgradeProgressive" else 1
+            pool.extend(self.create_item(name) for _ in range(copies))
 
         # The goal is a separate address=None "Victory" event location, not one of the real
         # (networked) locations, so the pool needs exactly one item per real location.

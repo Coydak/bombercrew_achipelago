@@ -143,14 +143,52 @@ def livery_slot_for(name):
             return slot
     return None
 
+# Non-cosmetic bomber upgrades are progressive: one item per upgrade *line* (parallel
+# variants like Standard/Armoured/Light engines are separate lines, never merged), applied
+# fleet-wide to every slot of the matching BomberUpgradeType. Receiving another copy moves
+# that line up one tier. Ordered lowest to highest tier; payload is "{lineId}:{tierCount}"
+# so the .apworld generator knows how many copies to put in the pool without duplicating
+# this table in Python.
+PROGRESSIVE_LINES = {
+    "EngineStandard": ("Engine", ["EngineStandardMk1", "EngineStandardMk2", "EngineStandardMk3", "EngineStandardMk4", "EngineStandardMk5"]),
+    "EngineArmoured": ("Engine", ["EngineArmouredMk1", "EngineArmouredMk2", "EngineArmouredMk3", "EngineArmouredMk4", "EngineArmouredMk5"]),
+    "EngineLight": ("Engine", ["EngineLightMk1", "EngineLightMk2", "EngineLightMk3"]),
+    "GunTurret303x2": ("GunTurret", ["GunTurret303x2Mk1", "GunTurret303x2Mk2", "GunTurret303x2Mk3"]),
+    "GunTurret303x2AmmoFeed": ("GunTurret", ["GunTurret303x2Mk1_AmmoFeed", "GunTurret303x2Mk2_AmmoFeed", "GunTurret303x2Mk3_AmmoFeed"]),
+    "GunTurret303x4": ("GunTurret", ["GunTurret303x4Mk3", "GunTurret303x4Mk4"]),
+    "GunTurret303x4AmmoFeed": ("GunTurret", ["GunTurret303x4Mk3_AmmoFeed"]),
+    "GunTurret50x4": ("GunTurret", ["GunTurret50x4Mk3", "GunTurret50x4Mk4"]),
+    "GunTurret50x4AmmoFeed": ("GunTurret", ["GunTurret50x4Mk3_AmmoFeed"]),
+    "GunTurret50x2": ("GunTurret", ["GunTurret50x2Mk1", "GunTurret50x2Mk2", "GunTurret50x2Mk3"]),
+    "GunTurret50x2AmmoFeed": ("GunTurret", ["GunTurret50x2Mk1_AmmoFeed", "GunTurret50x2Mk2_AmmoFeed", "GunTurret50x2Mk3_AmmoFeed"]),
+    "FuselageLightweight": ("FuselageMain", ["FuselageLightweightMk1", "FuselageLightweightMk2", "FuselageLightweightMk3", "FuselageLightweightMk4", "FuselageLightweightMk5"]),
+    "FuselageArmoured": ("FuselageMain", ["FuselageArmouredMk1", "FuselageArmouredMk2", "FuselageArmouredMk3", "FuselageArmouredMk4", "FuselageArmouredMk5", "FuselageArmouredMk6", "FuselageArmouredMk7"]),
+    "Electrical": ("Electrical", ["ElectricalSystemMk1", "ElectricalSystemMk2", "ElectricalSystemMk3", "ElectricalSystemMk4", "ElectricalSystemMk5"]),
+    "Hydraulic": ("Hyrdaulic", ["HydraulicSystemMk1", "HydraulicSystemMk2", "HydraulicSystemMk3", "HydraulicSystemMk4"]),
+    "Radar": ("Radar", ["RadarMk1", "RadarMk2", "RadarMk3", "RadarMk4", "RadarMk5", "RadarMk6"]),
+    "Extinguisher": ("Extinguisher", ["ExtinguisherMk1", "ExtinguisherMk2", "ExtinguisherMk3", "ExtinguisherMk4"]),
+    "EquipmentRack": ("EquipmentRack", ["EquipmentRack1", "EquipmentRack2", "EquipmentRack3"]),
+    "OxygenTank": ("OxygenTank", ["OxygenTankMk1", "OxygenTankMk2", "OxygenTankMk3"]),
+    "FuelTank": ("FuelTank", ["FuelTankMk1", "FuelTankMk2", "FuelTankMk3"]),
+    "FuelTankSelfSealing": ("FuelTank", ["FuelTankSelfSealingMk1"]),
+    "SurvivalDinghy": ("SurvivalDinghy", ["DinghyMk1", "DinghyMk2", "DinghyMk3"]),
+    "SurvivalPigeon": ("SurvivalPigeon", ["PigeonMk1", "PigeonMk2", "PigeonMk3"]),
+}
+
 entries = []  # (item_id_offset, display_name, category, payload)
 
-# --- Bomber upgrades: cross slot x compatible catalogue item, skipping the slot's own default ---
+# --- Progressive bomber upgrades: one item per line, applied fleet-wide. ---
+for line_id, (upgrade_type, tiers) in PROGRESSIVE_LINES.items():
+    display = f"Progressive {line_id}"
+    payload = f"{line_id}:{len(tiers)}"
+    entries.append((display, "BomberUpgradeProgressive", payload))
+
+# --- Cosmetic livery: still one item per slot x catalogue item (no tiering concept for skins). ---
 for slot_id, slot_type, default_name in SLOTS:
+    if slot_type != "Livery":
+        continue
     for item_name, item_type in BOMBER_CATALOGUE:
-        if item_type != slot_type:
-            continue
-        if slot_type == "Livery" and livery_slot_for(item_name) != slot_id:
+        if item_type != "Livery" or livery_slot_for(item_name) != slot_id:
             continue
         if item_name == default_name:
             continue

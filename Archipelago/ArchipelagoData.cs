@@ -13,6 +13,14 @@ public class ArchipelagoData
     public List<long> CheckedLocations;
 
     /// <summary>
+    /// How many copies of each progressive bomber upgrade line (see ItemRewarder's
+    /// ProgressiveLines) have been received so far, keyed by line id. Used to work out which
+    /// tier to install next since the game's own save data only tracks what's currently
+    /// equipped, not how many progressive tiers of a line have been received.
+    /// </summary>
+    public Dictionary<string, int> ProgressiveUpgradeCounts = new();
+
+    /// <summary>
     /// seed for this archipelago data. Can be used when loading a file to verify the session the player is trying to
     /// load is valid to the room it's connecting to.
     /// </summary>
