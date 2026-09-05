@@ -298,10 +298,23 @@ public class ItemRewarder
     }
 
     /// <summary>
+    /// True if the given crew equipment piece has been unlocked for purchase - i.e. its item has
+    /// been received via Archipelago (ApplyCrewEquipment). Used by ShopHooks to gate whether a
+    /// crew quarters purchase attempt is allowed to actually equip it.
+    /// </summary>
+    public static bool IsCrewEquipmentUnlocked(CrewmanGearType gearType, string equipmentName)
+    {
+        return ArchipelagoClient.ServerData.UnlockedCrewEquipment.Contains($"{gearType}:{equipmentName}");
+    }
+
+    /// <summary>
     /// Expected payload: "GearType:EquipmentAssetName", where GearType is a CrewmanGearType name
     /// (Headgear, Oxygen, Vest, Gloves, Boots, Flightsuit) and EquipmentAssetName is the
     /// ScriptableObject asset name of a CrewmanEquipmentBase registered in the crew gear catalogue.
-    /// Applies to every currently alive crewman.
+    /// Unlocks the piece for purchase in the crew quarters (see ShopHooks.
+    /// HandleEquipmentPurchaseAttempt / IsCrewEquipmentUnlocked) - it does NOT equip anyone by
+    /// itself. Once unlocked, a piece stays unlocked forever, so the player can freely (re-)equip
+    /// it on any crewman, any number of times, through the normal purchase flow.
     /// </summary>
     private static void ApplyCrewEquipment(string payload)
     {
@@ -312,7 +325,6 @@ public class ItemRewarder
             return;
         }
 
-        var gearType = (CrewmanGearType)Enum.Parse(typeof(CrewmanGearType), parts[0]);
         string equipmentName = parts[1];
         var equipment = CrewmanGearCatalogueLoader.Instance?.GetCatalogue()?.GetByName(equipmentName);
         if (equipment == null)
@@ -321,12 +333,8 @@ public class ItemRewarder
             return;
         }
 
-        foreach (var crewman in GameState.GetAliveCrewmen())
-        {
-            crewman.SetEquippedFor(gearType, equipment);
-        }
-
-        ArchipelagoConsole.LogMessage($"Equipped crew with '{equipment.GetNamedTextTranslated()}'.");
+        ArchipelagoClient.ServerData.UnlockedCrewEquipment.Add(payload);
+        ArchipelagoConsole.LogMessage($"Unlocked '{equipment.GetNamedTextTranslated()}' - equip it in the crew quarters to use it.");
     }
 
     /// <summary>

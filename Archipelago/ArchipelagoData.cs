@@ -22,6 +22,16 @@ public class ArchipelagoData
     public Dictionary<string, int> ProgressiveUpgradeCounts = new();
 
     /// <summary>
+    /// Crew equipment unlocked for purchase so far, keyed the same way as CrewEquipment item
+    /// payloads ("gearType:equipmentName"). Receiving a crew equipment item only unlocks it here
+    /// (see ItemRewarder.ApplyCrewEquipment) rather than equipping it directly - the player then
+    /// equips it (or re-equips any other previously-unlocked piece, freely, any number of times)
+    /// through the normal crew quarters purchase flow (see ShopHooks.
+    /// HandleEquipmentPurchaseAttempt / ItemRewarder.IsCrewEquipmentUnlocked).
+    /// </summary>
+    public HashSet<string> UnlockedCrewEquipment = new();
+
+    /// <summary>
     /// seed for this archipelago data. Can be used when loading a file to verify the session the player is trying to
     /// load is valid to the room it's connecting to. [JsonProperty] forces this private field into
     /// ToString()'s JSON (Newtonsoft only serializes public members by default) so it round-trips

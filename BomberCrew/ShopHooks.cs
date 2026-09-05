@@ -1,6 +1,5 @@
 extern alias game;
 
-using System.Collections.Generic;
 using BC_archipelago.Archipelago;
 using BC_archipelago.Utils;
 using game;
@@ -27,33 +26,21 @@ namespace BC_archipelago.BomberCrew;
 /// Anything untracked (currently: cosmetic Livery) is left alone and behaves exactly like
 /// vanilla.
 ///
-/// Crew equipment isn't tiered, so it keeps its original design: the original purchase always
-/// goes through and is then reverted (equip, balance, stock) - only receiving the item via
-/// Archipelago actually equips it fleet-wide.
+/// Crew equipment now follows the exact same unlock-gated model as bomber upgrades (see
+/// HandleEquipmentPurchaseAttempt): buying always sends the check on first attempt, but only
+/// actually equips once the piece has been unlocked via a received Archipelago item. Once
+/// unlocked, it stays unlocked forever, so the player can freely (re-)equip any previously-
+/// unlocked piece on any crewman, any number of times, through the normal vanilla purchase flow.
 /// </summary>
 public static class ShopHooks
 {
     private static bool patched;
 
-    // Bomber upgrade rows have three distinct states; crew equipment rows (no unlock-gated
-    // install step) only ever use NotPurchasedTint/PurchasedTint.
+    // Both bomber upgrade and crew equipment rows have four distinct states now.
     private static readonly Color NotPurchasedTint = Color.white;
     private static readonly Color PurchasedTint = new(1f, 0.75f, 0.25f);
     private static readonly Color EquipableTint = new(0.4f, 1f, 0.4f);
-
-    private readonly struct EquipmentPurchaseState
-    {
-        public readonly Dictionary<Crewman, CrewmanEquipmentBase> OldEquipped;
-        public readonly int StockBefore;
-        public readonly int BalanceBefore;
-
-        public EquipmentPurchaseState(Dictionary<Crewman, CrewmanEquipmentBase> oldEquipped, int stockBefore, int balanceBefore)
-        {
-            OldEquipped = oldEquipped;
-            StockBefore = stockBefore;
-            BalanceBefore = balanceBefore;
-        }
-    }
+    private static readonly Color EquipableUntriedTint = new(0.3f, 0.75f, 1f);
 
     public static void Apply()
     {
@@ -112,17 +99,20 @@ public static class ShopHooks
     /// a console message. Untracked combos (e.g. cosmetic Livery) are left with their normal
     /// vanilla appearance.
     ///
-    /// Bomber upgrade rows have three distinct states:
-    /// - white: purchase never attempted (no check sent yet for this exact slot/upgrade combo).
-    /// - orange: purchase attempted (check sent), but the progressive line hasn't unlocked this
-    ///   tier yet via a received Archipelago item - buying does nothing until it's unlocked.
-    /// - green: unlocked - this tier can actually be bought and installed on this slot right now
-    ///   (see ItemRewarder.IsProgressiveUpgradeUnlocked / ShopHooks.AttemptPurchasePrefix).
-    /// Unlocked takes priority over checked, since an item can unlock a tier before the player
-    /// ever attempts to buy that specific slot/tier combo.
+    /// Bomber upgrade rows have four distinct states, combining checked and unlocked
+    /// independently (an item can unlock a tier before the player ever attempts to buy that
+    /// specific slot/tier combo, so these aren't mutually exclusive):
+    /// - white: never attempted (no check sent) and not unlocked.
+    /// - orange: attempted (check sent), but the progressive line hasn't unlocked this tier yet
+    ///   via a received Archipelago item - buying does nothing until it's unlocked.
+    /// - blue: unlocked but never attempted on this exact slot - buying it now both sends a new
+    ///   check AND actually installs it (see ItemRewarder.IsProgressiveUpgradeUnlocked /
+    ///   ShopHooks.AttemptPurchasePrefix).
+    /// - green: unlocked AND already attempted on this slot - buying again just re-installs it,
+    ///   no new check.
     ///
-    /// Crew equipment rows have no unlock-gated install step (buying always reverts; only
-    /// receiving the item actually equips it fleet-wide), so they only ever show white/orange.
+    /// Crew equipment rows use the exact same four states, keyed on ItemRewarder.
+    /// IsCrewEquipmentUnlocked instead of IsProgressiveUpgradeUnlocked.
     ///
     /// Patched here rather than on BomberUpgradePurchaseableSelection/CrewQuartersItemSelectButton's
     /// own Refresh() because SelectableFilterButton.SetUpGraphics is the actual last writer of the
@@ -151,7 +141,7 @@ public static class ShopHooks
 
                 bool purchased = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
                 bool equipable = ItemRewarder.IsProgressiveUpgradeUnlocked(fittable.name);
-                SetTextColor(nameSetter, equipable ? EquipableTint : purchased ? PurchasedTint : NotPurchasedTint);
+                SetTextColor(nameSetter, ResolveTint(purchased, equipable));
                 return;
             }
 
@@ -165,13 +155,21 @@ public static class ShopHooks
                 long locationId = LocationTable.GetShopPurchaseLocation($"{equipment.GetGearType()}:{equipment.name}");
                 if (locationId < 0) return;
 
-                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? PurchasedTint : NotPurchasedTint);
+                bool purchased = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
+                bool equipable = ItemRewarder.IsCrewEquipmentUnlocked(equipment.GetGearType(), equipment.name);
+                SetTextColor(nameSetter, ResolveTint(purchased, equipable));
             }
         }
         catch (System.Exception ex)
         {
             Plugin.BepinLogger.LogError($"Error in ShopHooks.SetUpGraphicsPostfix: {ex}");
         }
+    }
+
+    private static Color ResolveTint(bool purchased, bool equipable)
+    {
+        if (equipable) return purchased ? EquipableTint : EquipableUntriedTint;
+        return purchased ? PurchasedTint : NotPurchasedTint;
     }
 
     // ---------------------------------------------------------------------
@@ -243,104 +241,64 @@ public static class ShopHooks
     }
 
     // ---------------------------------------------------------------------
-    // Crew equipment (single crewman)
+    // Crew equipment - same unlock-gated model as bomber upgrades: buying always sends the
+    // check on first attempt, but only actually equips once the piece has been unlocked via a
+    // received Archipelago item (ItemRewarder.IsCrewEquipmentUnlocked). Once unlocked, it stays
+    // unlocked forever, so the player can freely (re-)equip any previously-unlocked piece on any
+    // crewman, any number of times, through the normal vanilla purchase flow (real funds/stock
+    // checks). No revert-after-the-fact needed anymore, same as AttemptPurchasePrefix.
     // ---------------------------------------------------------------------
 
     [HarmonyPrefix]
     [HarmonyPatch(typeof(CrewQuartersScreenController), "PurchaseEquipment", typeof(CrewmanEquipmentBase))]
-    private static void PurchaseEquipmentPrefix(
-        CrewmanEquipmentBase equipment,
-        Crewman ___m_currentlySelectedCrewman,
-        out EquipmentPurchaseState __state)
+    private static bool PurchaseEquipmentPrefix(CrewmanEquipmentBase equipment, Crewman ___m_currentlySelectedCrewman)
     {
-        __state = default;
-        if (equipment == null || ___m_currentlySelectedCrewman == null) return;
-
-        var oldEquipped = new Dictionary<Crewman, CrewmanEquipmentBase>
-        {
-            [___m_currentlySelectedCrewman] = ___m_currentlySelectedCrewman.GetEquippedFor(equipment.GetGearType())
-        };
-        int stockBefore = SaveDataContainer.Instance?.Get()?.GetStockForCrewGear(equipment) ?? 0;
-        int balanceBefore = SaveDataContainer.Instance?.Get()?.GetBalance() ?? 0;
-        __state = new EquipmentPurchaseState(oldEquipped, stockBefore, balanceBefore);
+        return HandleEquipmentPurchaseAttempt(equipment, ___m_currentlySelectedCrewman);
     }
-
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(CrewQuartersScreenController), "PurchaseEquipment", typeof(CrewmanEquipmentBase))]
-    private static void PurchaseEquipmentPostfix(CrewmanEquipmentBase equipment, EquipmentPurchaseState __state)
-    {
-        RevertAndCheckEquipmentPurchase(equipment, __state);
-    }
-
-    // ---------------------------------------------------------------------
-    // Crew equipment (whole crew at once)
-    // ---------------------------------------------------------------------
 
     [HarmonyPrefix]
     [HarmonyPatch(typeof(CrewQuartersScreenController), "PurchaseEquipmentAll", typeof(CrewmanEquipmentBase))]
-    private static void PurchaseEquipmentAllPrefix(CrewmanEquipmentBase equipment, out EquipmentPurchaseState __state)
+    private static bool PurchaseEquipmentAllPrefix(CrewmanEquipmentBase equipment)
     {
-        __state = default;
-        if (equipment == null) return;
-
-        var oldEquipped = new Dictionary<Crewman, CrewmanEquipmentBase>();
-        foreach (var crewman in GameState.GetAliveCrewmen())
-        {
-            oldEquipped[crewman] = crewman.GetEquippedFor(equipment.GetGearType());
-        }
-
-        int stockBefore = SaveDataContainer.Instance?.Get()?.GetStockForCrewGear(equipment) ?? 0;
-        int balanceBefore = SaveDataContainer.Instance?.Get()?.GetBalance() ?? 0;
-        __state = new EquipmentPurchaseState(oldEquipped, stockBefore, balanceBefore);
+        // No single "already equipped" crewman to check against here - fleet-wide purchases are
+        // idempotent enough (vanilla just no-ops per-crewman for anyone who already has it).
+        return HandleEquipmentPurchaseAttempt(equipment, null);
     }
 
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(CrewQuartersScreenController), "PurchaseEquipmentAll", typeof(CrewmanEquipmentBase))]
-    private static void PurchaseEquipmentAllPostfix(CrewmanEquipmentBase equipment, EquipmentPurchaseState __state)
-    {
-        RevertAndCheckEquipmentPurchase(equipment, __state);
-    }
-
-    private static void RevertAndCheckEquipmentPurchase(CrewmanEquipmentBase equipment, EquipmentPurchaseState state)
+    private static bool HandleEquipmentPurchaseAttempt(CrewmanEquipmentBase equipment, Crewman selectedCrewman)
     {
         try
         {
-            if (equipment == null || state.OldEquipped == null) return;
-
-            var saveData = SaveDataContainer.Instance?.Get();
-            if (saveData == null) return;
-
-            bool anyEquipped = false;
-            foreach (var pair in state.OldEquipped)
-            {
-                if (pair.Key.GetEquippedFor(equipment.GetGearType()) == equipment) anyEquipped = true;
-            }
-
-            // Revert every captured crewman back to what they had before, regardless of success -
-            // the purchase attempt only sends a check, it never actually keeps the equipment.
-            foreach (var pair in state.OldEquipped)
-            {
-                pair.Key.SetEquippedFor(equipment.GetGearType(), pair.Value);
-            }
-
-            saveData.ModifyStockForCrewGear(equipment, state.StockBefore - saveData.GetStockForCrewGear(equipment));
-            saveData.AddBalance(state.BalanceBefore - saveData.GetBalance());
-
-            if (!anyEquipped) return;
+            if (equipment == null) return true;
 
             long locationId = LocationTable.GetShopPurchaseLocation($"{equipment.GetGearType()}:{equipment.name}");
-            if (locationId < 0) return;
+            if (locationId < 0) return true; // not tracked by Archipelago
+
+            if (selectedCrewman != null && selectedCrewman.GetEquippedFor(equipment.GetGearType()) == equipment)
+            {
+                return false; // already equipped, matches vanilla's own no-op for that case
+            }
 
             bool alreadyChecked = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
-            ArchipelagoConsole.LogMessage(alreadyChecked
-                ? $"Already checked '{equipment.name}' before - no new check sent."
-                : $"Checked '{equipment.name}' for the first time - receive it via Archipelago to actually equip it.");
-            Plugin.BepinLogger.LogMessage($"Purchase-check for equipment '{equipment.name}'. Sending location check {locationId}.");
-            Plugin.ArchipelagoClient.CheckLocation(locationId);
+            if (!alreadyChecked)
+            {
+                ArchipelagoConsole.LogMessage($"Checked '{equipment.name}' for the first time.");
+                Plugin.BepinLogger.LogMessage($"Purchase-check for equipment '{equipment.name}'. Sending location check {locationId}.");
+                Plugin.ArchipelagoClient.CheckLocation(locationId);
+            }
+
+            if (ItemRewarder.IsCrewEquipmentUnlocked(equipment.GetGearType(), equipment.name))
+            {
+                return true; // unlocked via Archipelago - let vanilla purchase/equip run normally
+            }
+
+            ArchipelagoConsole.LogMessage($"'{equipment.name}' isn't unlocked yet - receive it via Archipelago first.");
+            return false; // not yet unlocked: buying never actually equips it
         }
         catch (System.Exception ex)
         {
-            Plugin.BepinLogger.LogError($"Error in ShopHooks equipment purchase revert: {ex}");
+            Plugin.BepinLogger.LogError($"Error in ShopHooks.HandleEquipmentPurchaseAttempt: {ex}");
+            return false;
         }
     }
 }

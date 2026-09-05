@@ -9,11 +9,11 @@ using Newtonsoft.Json;
 namespace BC_archipelago.Archipelago;
 
 /// <summary>
-/// Persists Archipelago progress (checked locations, progressive upgrade tiers) alongside the
-/// game's own save file, and validates it against whichever room is actually connected before
-/// trusting it.
+/// Persists Archipelago progress (checked locations, progressive upgrade tiers, unlocked crew
+/// equipment) alongside the game's own save file, and validates it against whichever room is
+/// actually connected before trusting it.
 ///
-/// Previously, CheckedLocations/ProgressiveUpgradeCounts lived only in memory for the process
+/// Previously, this state lived only in memory for the process
 /// lifetime - every relaunch started from scratch, relying entirely on the Archipelago server's
 /// own already-checked-location bookkeeping (which starts fresh unless matched against the same
 /// server/session). This ties that state to the game's own save slots instead, the same way the
@@ -30,9 +30,9 @@ public static class ArchipelagoPersistence
 {
     /// <summary>
     /// Call after SaveDataContainer.Load(int) succeeds. Restores CheckedLocations/
-    /// ProgressiveUpgradeCounts from this slot's companion file (or clears them if there isn't
-    /// one - a save with no recorded Archipelago progress yet), then validates against whichever
-    /// room is currently connected, if any.
+    /// ProgressiveUpgradeCounts/UnlockedCrewEquipment from this slot's companion file (or clears
+    /// them if there isn't one - a save with no recorded Archipelago progress yet), then
+    /// validates against whichever room is currently connected, if any.
     /// </summary>
     public static void OnSaveLoaded(int slotIndex)
     {
@@ -47,6 +47,7 @@ public static class ArchipelagoPersistence
 
             data.CheckedLocations = loaded?.CheckedLocations ?? new();
             data.ProgressiveUpgradeCounts = loaded?.ProgressiveUpgradeCounts ?? new();
+            data.UnlockedCrewEquipment = loaded?.UnlockedCrewEquipment ?? new();
             data.SaveFileSeed = loaded?.Seed;
         }
         catch (Exception ex)
@@ -54,6 +55,7 @@ public static class ArchipelagoPersistence
             Plugin.BepinLogger.LogError($"Failed to load Archipelago progress for save slot {slotIndex}: {ex}");
             data.CheckedLocations = new();
             data.ProgressiveUpgradeCounts = new();
+            data.UnlockedCrewEquipment = new();
             data.SaveFileSeed = null;
         }
 
@@ -109,6 +111,7 @@ public static class ArchipelagoPersistence
         ArchipelagoConsole.LogMessage("This save's stored Archipelago progress is for a different seed - starting fresh for this room.");
         data.CheckedLocations = new();
         data.ProgressiveUpgradeCounts = new();
+        data.UnlockedCrewEquipment = new();
     }
 
     private static string GetCompanionPath(int slotIndex)
