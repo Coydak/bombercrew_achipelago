@@ -18,10 +18,12 @@ namespace BC_archipelago.BomberCrew;
 /// in the multiworld. This keeps "location" (the check) and "item" (the reward) properly
 /// decoupled instead of the shop just handing you what you paid for.
 ///
-/// Bomber upgrades replace the original purchase method outright (see AttemptPurchasePrefix) so
-/// the check always sends regardless of the game's own funds/weight gating. Crew equipment
-/// instead lets the original purchase go through and then reverts its effects (equip, balance,
-/// stock) - there's no equivalent lockout risk there since crew gear has no weight system.
+/// Bomber upgrades replace the original purchase method outright (see AttemptPurchasePrefix) for
+/// any slot/upgrade combo tracked by Archipelago, so the check always sends regardless of the
+/// game's own funds/weight gating; anything untracked (currently: cosmetic Livery) is left alone
+/// and behaves exactly like vanilla. Crew equipment instead always lets the original purchase go
+/// through and then reverts its effects (equip, balance, stock) - there's no equivalent lockout
+/// risk there since crew gear has no weight system.
 /// </summary>
 public static class ShopHooks
 {
@@ -57,15 +59,20 @@ public static class ShopHooks
     // ---------------------------------------------------------------------
 
     /// <summary>
-    /// Replaces AttemptPurchase entirely (returns false to skip the original) instead of just
-    /// reverting its effects afterward. The original method gates on funds AND a weight budget
-    /// (heavy equipment needs enough installed engines to carry it) computed from the bomber's
-    /// *current* state - once any slot is force-installed by a received Archipelago item into an
-    /// overweight configuration (which bypasses that gate entirely, see ItemRewarder), every
-    /// future purchase attempt for ANY slot would silently fail the weight check and never send
-    /// its location check again. Reimplementing the check-sending ourselves, with no funds/weight
-    /// involved at all, avoids that lockout - buying in the shop should always be able to send a
-    /// check, since it never actually keeps the upgrade anyway.
+    /// Replaces AttemptPurchase (returns false to skip the original) for slot/upgrade
+    /// combinations that ARE tracked by Archipelago, instead of just reverting its effects
+    /// afterward. The original method gates on funds AND a weight budget (heavy equipment needs
+    /// enough installed engines to carry it) computed from the bomber's *current* state - once
+    /// any slot is force-installed by a received Archipelago item into an overweight
+    /// configuration (which bypasses that gate entirely, see ItemRewarder), every future purchase
+    /// attempt for ANY slot would silently fail the weight check and never send its location
+    /// check again. Reimplementing the check-sending ourselves, with no funds/weight involved at
+    /// all, avoids that lockout.
+    ///
+    /// Anything NOT tracked by Archipelago (currently: cosmetic Livery, which has no items or
+    /// locations at all) is left completely alone - the prefix returns true and the vanilla
+    /// method runs normally, so it can still be bought and equipped like any untouched part of
+    /// the game.
     /// </summary>
     [HarmonyPrefix]
     [HarmonyPatch(typeof(BomberUpgradeScreenController), "AttemptPurchase")]
@@ -79,23 +86,28 @@ public static class ShopHooks
             string slotId = ___m_currentlySelectedRequirement?.GetUniquePartId();
             if (slotId == null || ___m_currentlySelectedEquippable == null) return true; // nothing selected, let vanilla handle it
 
-            var bomberConfig = SaveDataContainer.Instance?.Get()?.GetCurrentBomber();
             string upgradeName = ___m_currentlySelectedEquippable.name;
+            long locationId = LocationTable.GetShopPurchaseLocation($"{slotId}:{upgradeName}");
+            if (locationId < 0)
+            {
+                return true; // not tracked by Archipelago (e.g. cosmetic Livery) - vanilla purchase/install applies as normal
+            }
+
+            var bomberConfig = SaveDataContainer.Instance?.Get()?.GetCurrentBomber();
             if (bomberConfig != null && bomberConfig.GetUpgradeFor(slotId) == upgradeName)
             {
                 return false; // already equipped, matches vanilla's own no-op for that case
             }
 
-            long locationId = LocationTable.GetShopPurchaseLocation($"{slotId}:{upgradeName}");
-            if (locationId >= 0)
-            {
-                ArchipelagoConsole.LogMessage($"Checked '{upgradeName}' ({slotId}) - receive it via Archipelago to actually install it.");
-                Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{slotId}'. Sending location check {locationId}.");
-                Plugin.ArchipelagoClient.CheckLocation(locationId);
-            }
+            bool alreadyChecked = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
+            ArchipelagoConsole.LogMessage(alreadyChecked
+                ? $"Already checked '{upgradeName}' ({slotId}) before - no new check sent."
+                : $"Checked '{upgradeName}' ({slotId}) for the first time - receive it via Archipelago to actually install it.");
+            Plugin.BepinLogger.LogMessage($"Purchase-check for '{upgradeName}' in slot '{slotId}'. Sending location check {locationId}.");
+            Plugin.ArchipelagoClient.CheckLocation(locationId);
 
             __instance.Refresh(); // keep the shop UI in sync even though nothing was actually bought
-            return false; // skip the original entirely: no funds/weight gate, no install, nothing to revert
+            return false; // tracked slot: buying never actually installs it, only receiving it via AP does
         }
         catch (System.Exception ex)
         {
@@ -193,7 +205,10 @@ public static class ShopHooks
             long locationId = LocationTable.GetShopPurchaseLocation($"{equipment.GetGearType()}:{equipment.name}");
             if (locationId < 0) return;
 
-            ArchipelagoConsole.LogMessage($"Checked '{equipment.name}' - receive it via Archipelago to actually equip it.");
+            bool alreadyChecked = ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId);
+            ArchipelagoConsole.LogMessage(alreadyChecked
+                ? $"Already checked '{equipment.name}' before - no new check sent."
+                : $"Checked '{equipment.name}' for the first time - receive it via Archipelago to actually equip it.");
             Plugin.BepinLogger.LogMessage($"Purchase-check for equipment '{equipment.name}'. Sending location check {locationId}.");
             Plugin.ArchipelagoClient.CheckLocation(locationId);
         }
