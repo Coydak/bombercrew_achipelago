@@ -1,8 +1,10 @@
 # TODO — where we left off
 
-Status snapshot after the session that reworked bomber upgrades into an unlock-based system,
-added the 3-color shop indicator, removed default-baseline Mk1 items, and added a Disconnect
-button + item-received toast. Read this before picking work back up.
+Status snapshot after the session that reworked bomber upgrades AND crew equipment into the same
+unlock-based system, added a 4-color shop indicator, removed default-baseline Mk1 items, added a
+Disconnect button + item-received toast, save-tied progress persistence, an apworld DLC1 toggle,
+player setup docs, and a local TLS relay for connecting to archipelago.gg-hosted rooms. Read this
+before picking work back up.
 
 ## What's done and verified in-game
 
@@ -46,10 +48,22 @@ button + item-received toast. Read this before picking work back up.
     equipable (green) from the very start of a new game.
   - **Cosmetic Livery skins remain excluded entirely** (no items, no locations) - purely
     cosmetic, no gameplay effect.
-  - **Shop UI now shows 3 states per bomber-upgrade row** (`ShopHooks.SetUpGraphicsPostfix`):
-    white = never attempted, orange = attempted (checked) but not yet unlocked, green =
-    unlocked/equipable right now. Crew equipment rows only ever show white/orange (no
-    unlock-gated install step exists for crew - buying always reverts, only receiving equips).
+  - **Crew equipment now follows the exact same unlock-gated model as bomber upgrades**
+    (previously it didn't - receiving equipped it fleet-wide immediately, and buying always
+    reverted). Receiving a CrewEquipment item only unlocks it
+    (`ArchipelagoData.UnlockedCrewEquipment`, keyed `"gearType:equipmentName"`) - it does not
+    equip anyone by itself anymore. `ShopHooks.HandleEquipmentPurchaseAttempt` (replaces the old
+    `PurchaseEquipment[All]Prefix/Postfix` + `EquipmentPurchaseState` revert dance entirely) sends
+    the check on first attempt, then lets the real vanilla purchase run (actual funds/stock
+    spent, actual equip) only if unlocked - so the player can freely (re-)equip any
+    previously-unlocked piece on any crewman, any number of times, exactly like bomber upgrades.
+  - **Shop UI now shows 4 states per row** (`ShopHooks.SetUpGraphicsPostfix` /
+    `ShopHooks.ResolveTint`, both bomber-upgrade and crew-equipment rows identically): white =
+    never attempted and not unlocked; orange = attempted (checked) but not unlocked; blue =
+    unlocked but never attempted on this exact slot/piece (buying now sends a new check AND
+    installs/equips); green = unlocked AND already attempted (buying again just re-installs/
+    re-equips, no new check). Checked and unlocked are independent booleans, not mutually
+    exclusive - an item can unlock something before the player ever attempts that specific combo.
 - **`ItemRewarder.cs`**: all 8 categories implemented against real game APIs. Verified live.
 - **DeathLink**: `DeathLinkHandler.KillPlayer()` wired into `Plugin.Update()`, guarded against
   re-broadcasting what it just received.
@@ -80,8 +94,8 @@ button + item-received toast. Read this before picking work back up.
 
 ### 2. Persistence / seed validation — DONE, needs live verification
 
-- `ArchipelagoData` (`CheckedLocations`/`ProgressiveUpgradeCounts`) is now tied to the game's
-  own save slots instead of living only in memory. Implementation:
+- `ArchipelagoData` (`CheckedLocations`/`ProgressiveUpgradeCounts`/`UnlockedCrewEquipment`) is
+  now tied to the game's own save slots instead of living only in memory. Implementation:
   - `BomberCrew/SavePersistenceHooks.cs` — Harmony postfixes on `SaveDataContainer.Load(int)`
     and `SaveDataContainer.Save()` (found via `ilspycmd`-decompiling `Assembly-CSharp.dll`
     offline - `SaveDataContainer` is a thin JSON read/write wrapper over `Application.
@@ -132,6 +146,26 @@ button + item-received toast. Read this before picking work back up.
   was proposed and then explicitly declined ("Laisse tomber"). Livery stays untracked by AP.
 - Itempool/classification/goal choices are v1 opinions, not load-bearing — revisit if
   playtesting says otherwise.
+
+### 3b. Distribution / connecting to archipelago.gg — DONE
+
+- **`v0.1.0` GitHub release** created (tag pushed) with `bomber_crew.apworld` and
+  `bomber_crew.yaml` attached, for others to grab without building from source.
+- **`tools/ap_ws_relay.py` + `tools/run_ap_relay.bat`**: Bomber Crew's old Unity/Mono runtime
+  cannot complete a modern TLS handshake, so it can't connect directly to a `wss://`-secured room
+  like the ones archipelago.gg hosts after an upload (confirmed live: `MONO_TLS_PROVIDER=btls`
+  made no difference, `Test-NetConnection` confirmed the port itself was reachable - it's a
+  runtime TLS capability gap, not a network/config issue). The relay listens locally on plain
+  `ws://` like the mod always expects and does the real `wss://` handshake on its behalf -
+  confirmed working live against an archipelago.gg-hosted room (only outbound connections, no
+  router/port-forwarding changes needed). Self-hosted `ArchipelagoServer.exe` rooms (plain
+  `ws://`) never needed this and still don't.
+- Generated and tested a real 2-game (Bomber Crew + Cyberpunk 2077) multiworld locally as a
+  sanity check for the eventual "test with other games" use case - works fine, no Bomber-Crew-
+  specific issues crossing games. (Note: the default Cyberpunk 2077 YAML template that ships with
+  Archipelago has a bug - `include_ncpd_hustles` ships with both weights at 0, which fails
+  generation; not something to fix in this repo, just something to remember if reusing that
+  template.)
 
 ### 4. Not yet real items (lower priority, deprioritized on purpose)
 
