@@ -96,6 +96,7 @@ public class ArchipelagoClient
 
             ServerData.SetupSession(success.SlotData, session.RoomState.Seed);
             Authenticated = true;
+            ArchipelagoPersistence.OnConnected();
 
             var deathLinkEnabled = ServerData.DeathLinkEnabled;
             DeathLinkHandler = new(session.CreateDeathLinkService(), ServerData.SlotName, deathLinkEnabled);
@@ -123,7 +124,7 @@ public class ArchipelagoClient
     /// <summary>
     /// something went wrong, or we need to properly disconnect from the server. cleanup and re null our session
     /// </summary>
-    private void Disconnect()
+    public void Disconnect()
     {
         Plugin.BepinLogger.LogDebug("disconnecting from server...");
         session?.Socket.Disconnect();

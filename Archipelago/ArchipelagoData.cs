@@ -13,18 +13,35 @@ public class ArchipelagoData
     public List<long> CheckedLocations;
 
     /// <summary>
-    /// How many copies of each progressive bomber upgrade line (see ItemRewarder's
-    /// ProgressiveLines) have been received so far, keyed by line id. Used to work out which
-    /// tier to install next since the game's own save data only tracks what's currently
-    /// equipped, not how many progressive tiers of a line have been received.
+    /// Highest tier unlocked so far for each progressive bomber upgrade line (see ItemRewarder's
+    /// ProgressiveLines), keyed by line id. Receiving a copy of a line's item bumps this by one;
+    /// it only ever grows, so any tier at or below it stays purchasable in the shop forever (see
+    /// ShopHooks.AttemptPurchasePrefix / ItemRewarder.IsProgressiveUpgradeUnlocked) - the game's
+    /// own save data only tracks what's currently equipped, not which tiers have been unlocked.
     /// </summary>
     public Dictionary<string, int> ProgressiveUpgradeCounts = new();
 
     /// <summary>
     /// seed for this archipelago data. Can be used when loading a file to verify the session the player is trying to
-    /// load is valid to the room it's connecting to.
+    /// load is valid to the room it's connecting to. [JsonProperty] forces this private field into
+    /// ToString()'s JSON (Newtonsoft only serializes public members by default) so it round-trips
+    /// through ArchipelagoPersistence's save-file companion.
     /// </summary>
+    [JsonProperty]
     private string seed;
+
+    public string Seed => seed;
+
+    /// <summary>
+    /// The seed found in the save file's Archipelago companion data at load time (see
+    /// ArchipelagoPersistence), not yet validated against whichever room we actually connect to.
+    /// Compared against <see cref="Seed"/> once connected; on a mismatch, CheckedLocations/
+    /// ProgressiveUpgradeCounts are reset instead of trusting progress from a different seed.
+    /// Not itself persisted - it only exists to carry that comparison across the gap between
+    /// loading a save and connecting (whichever happens first).
+    /// </summary>
+    [JsonIgnore]
+    public string SaveFileSeed;
 
     private Dictionary<string, object> slotData;
 

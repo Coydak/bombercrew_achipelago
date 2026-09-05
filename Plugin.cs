@@ -39,6 +39,7 @@ public class Plugin : BaseUnityPlugin
         MissionHooks.Apply();
         DeathLinkHooks.Apply();
         ShopHooks.Apply();
+        SavePersistenceHooks.Apply();
 
         ArchipelagoConsole.LogMessage($"{ModDisplayInfo} loaded!");
     }
@@ -83,6 +84,7 @@ public class Plugin : BaseUnityPlugin
         // show the mod is currently loaded in the corner
         GUI.Label(new Rect(16, 16, 300, 20), ModDisplayInfo);
         ArchipelagoConsole.OnGUI();
+        ItemNotifications.OnGUI();
 
         string statusMessage;
         // show the Archipelago Version and whether we're connected or not
@@ -93,6 +95,12 @@ public class Plugin : BaseUnityPlugin
 
             statusMessage = " Status: Connected";
             GUI.Label(new Rect(16, 50, 300, 20), APDisplayInfo + statusMessage);
+
+            if (GUI.Button(new Rect(16, 70, 100, 20), "Disconnect"))
+            {
+                ArchipelagoClient.Disconnect();
+                ArchipelagoConsole.LogMessage("Disconnected from Archipelago.");
+            }
         }
         else
         {
