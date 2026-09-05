@@ -183,18 +183,8 @@ for line_id, (upgrade_type, tiers) in PROGRESSIVE_LINES.items():
     payload = f"{line_id}:{len(tiers)}"
     entries.append((display, "BomberUpgradeProgressive", payload))
 
-# --- Cosmetic livery: still one item per slot x catalogue item (no tiering concept for skins). ---
-for slot_id, slot_type, default_name in SLOTS:
-    if slot_type != "Livery":
-        continue
-    for item_name, item_type in BOMBER_CATALOGUE:
-        if item_type != "Livery" or livery_slot_for(item_name) != slot_id:
-            continue
-        if item_name == default_name:
-            continue
-        display = f"{item_name} ({slot_id})"
-        payload = f"{slot_id}:{item_name}"
-        entries.append((display, "BomberUpgrade", payload))
+# Cosmetic Livery items are intentionally excluded entirely (not randomized as items or
+# locations) - purely cosmetic, no gameplay effect, per design decision.
 
 # --- Crew equipment: one item per non-default catalogue entry ---
 for item_name, gear_type in CREW_CATALOGUE:

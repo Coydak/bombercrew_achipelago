@@ -10,7 +10,8 @@ Status snapshot as of the session that built and verified the real `.apworld`
 - **`LocationTable.cs`**:
   - `MissionCompletionByName` — 44 real campaign missions (main campaign 7 chapters +
     training + final, plus DLC1), fires via `MissionHooks` on `MissionFinishCriteria.EndMission`.
-  - `ShopPurchaseByKey` — 343 locations, one per (bomber upgrade slot × compatible
+  - `ShopPurchaseByKey` — 280 locations (226 bomber upgrade + 54 crew equipment; cosmetic
+    Livery is excluded entirely, see below), one per (bomber upgrade slot × compatible
     catalogue upgrade) and one per crew equipment item, keyed `"slotId:upgradeName"` /
     `"gearType:equipmentName"`. Fires via `BomberCrew/ShopHooks.cs` on real in-game
     purchase (`BomberUpgradeScreenController.AttemptPurchase`,
@@ -24,11 +25,10 @@ Status snapshot as of the session that built and verified the real `.apworld`
     (see session transcript) to keep location (check) and item (reward) properly decoupled,
     since vanilla Bomber Crew has no "owned but not equipped" inventory concept to piggyback
     on and buy-without-equipping isn't a thing in the original UI.
-  - **Total: 388 locations** (45 mission + 343 shop).
-- **`ItemTable.cs`**: 167 items — 23 `BomberUpgradeProgressive` (fleet-wide, tiered) + 63
-  cosmetic Livery `BomberUpgrade` (still individual per-slot) + 54 CrewEquipment + 27
-  utility items (Funds/Intel tiers, per-skill CrewSkillXp, per-chapter MissionUnlock
-  "clearance", InstantRepair, InstantHeal).
+  - **Total: 325 locations** (45 mission + 280 shop).
+- **`ItemTable.cs`**: 104 items — 23 `BomberUpgradeProgressive` (fleet-wide, tiered) + 54
+  CrewEquipment + 27 utility items (Funds/Intel tiers, per-skill CrewSkillXp, per-chapter
+  MissionUnlock "clearance", InstantRepair, InstantHeal).
   - **Progressive bomber upgrades**: non-cosmetic upgrades (engines, turrets, fuselage,
     electrical/hydraulic/radar/etc.) are no longer individual per-slot-per-mark items.
     Each upgrade *line* (parallel variants like Standard/Armoured/Light engines are
@@ -38,11 +38,14 @@ Status snapshot as of the session that built and verified the real `.apworld`
     upgrades all 4 engines together). A persistent per-line counter
     (`ArchipelagoData.ProgressiveUpgradeCounts`) tracks tiers received, since save data
     only records what's currently equipped. The shop-purchase locations
-    (`ShopPurchaseByKey`) are UNCHANGED - still one location per specific (slot, exact
-    mark) combo; only how you *receive* upgrades as items changed, not how buying them
-    sends a check. Cosmetic Livery items are unaffected (no tiering concept for skins).
-    Verified live: two copies of "Progressive EngineStandard" correctly installed Mk1
-    then Mk2 on all 4 engines, no crash.
+    (`ShopPurchaseByKey`) are UNCHANGED in spirit - still one location per specific (slot,
+    exact mark) combo; only how you *receive* upgrades as items changed, not how buying
+    them sends a check. Verified live: two copies of "Progressive EngineStandard"
+    correctly installed Mk1 then Mk2 on all 4 engines, no crash.
+  - **Cosmetic Livery skins removed entirely** (no items, no locations) - purely cosmetic,
+    no gameplay effect, so not worth randomizing. Removed from both generators
+    (`tools/gen_item_table.py`, `tools/gen_location_table.py`) and regenerated; the vanilla
+    shop/game still has the Livery category as normal, it's just untracked by AP now.
 - **`ItemRewarder.cs`**: all 8 categories implemented against real game APIs
   (`BomberUpgradeConfig.SetUpgrade`, `Crewman.SetEquippedFor`, `SaveData.SetMissionPlayed`,
   `Repairable.Repair`, `Crewman.MagicallyResurrect`). Verified live.
@@ -64,15 +67,15 @@ Status snapshot as of the session that built and verified the real `.apworld`
   location names and ids are guaranteed to match the C# tables exactly, never hand-typed.
   Rerun this generator (then re-zip and reinstall the `.apworld`) any time either table
   changes.
-- `__init__.py`: single flat "Menu" region containing all 388 real locations, no item-gated
+- `__init__.py`: single flat "Menu" region containing all 325 real locations, no item-gated
   access rules (deliberate — see the comment there and the reasoning that was previously
   here: the real game enforces chapter/economy gating independently of AP already).
-  Itempool = 167 unique item names, with `BomberUpgradeProgressive` items placed as one
+  Itempool = 104 unique item names, with `BomberUpgradeProgressive` items placed as one
   copy per tier (payload `"{lineId}:{tierCount}"` tells `create_items()` how many - see
-  `apworld_src/bomber_crew/__init__.py`), so the base pool is ~222 items, then padded with
-  filler copies up to 388. Classification: Livery-slot BomberUpgrade items and the 17
-  utility items (Funds/Intel/CrewSkillXp/InstantRepair/InstantHeal) are `filler`; everything
-  else (BomberUpgradeProgressive, CrewEquipment, MissionUnlock) is `useful`.
+  `apworld_src/bomber_crew/__init__.py`), padded with filler copies up to 325.
+  Classification: the 17 utility items (Funds/Intel/CrewSkillXp/InstantRepair/InstantHeal)
+  are `filler`; everything else (BomberUpgradeProgressive, CrewEquipment, MissionUnlock) is
+  `useful`.
 - **Goal**: a dedicated `address=None` "Victory" event location gated on
   `state.can_reach_location("C08_KEY", player)`. Do NOT lock the Victory event directly onto
   the real `C08_KEY` location (i.e. `get_location("C08_KEY").place_locked_item(...)`) — that
@@ -80,9 +83,11 @@ Status snapshot as of the session that built and verified the real `.apworld`
   (`_speedups.LocationStore.__init__: TypeError: an integer is required`), reproduced and
   confirmed during development. Keep the goal as a separate event location instead.
 - Verified end-to-end against a live game + local `ArchipelagoServer.exe`: generated a real
-  seed (370 items / 388 locations), connected, bought `GunTurret303x2Mk2` in
-  `gun_turret_rear` (a real shop-purchase location), server placed `PigeonMk3` there and
-  sent it back, client received it and installed it on `survival_pigeon`. Full loop works.
+  seed, connected, bought `GunTurret303x2Mk2` in `gun_turret_rear` (a real shop-purchase
+  location), server placed `PigeonMk3` there and sent it back, client received it and
+  installed it on `survival_pigeon`. Full loop works. (Item/location counts above are from
+  a later pass that removed cosmetic Livery entirely and made bomber upgrades progressive -
+  re-verify counts against `Archipelago/ItemTable.cs`/`LocationTable.cs` if this drifts.)
 
 Remaining polish, not blocking:
 

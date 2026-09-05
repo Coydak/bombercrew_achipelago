@@ -150,10 +150,10 @@ def livery_slot_for(name):
 
 bomber_keys = []  # "slotId:upgradeName"
 for slot_id, slot_type, default_name in SLOTS:
+    if slot_type == "Livery":
+        continue  # cosmetic skins excluded entirely - no items, no locations
     for item_name, item_type in BOMBER_CATALOGUE:
         if item_type != slot_type:
-            continue
-        if slot_type == "Livery" and livery_slot_for(item_name) != slot_id:
             continue
         if item_name == default_name:
             continue

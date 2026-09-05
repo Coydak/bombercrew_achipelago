@@ -17,10 +17,8 @@ class BomberCrewWeb(WebWorld):
     theme = "dirt"
 
 
-def _classify(category: str, payload: str) -> ItemClassification:
-    if category == "BomberUpgrade" and payload and payload.split(":", 1)[0].startswith("livery_"):
-        return ItemClassification.filler  # cosmetic, no gameplay effect
-    if category in ("BomberUpgrade", "CrewEquipment", "MissionUnlock"):
+def _classify(category: str) -> ItemClassification:
+    if category in ("BomberUpgradeProgressive", "BomberUpgrade", "CrewEquipment", "MissionUnlock"):
         return ItemClassification.useful
     # Funds, Intel, CrewSkillXp, InstantRepair, InstantHeal: nice to have, never required.
     return ItemClassification.filler
@@ -28,7 +26,7 @@ def _classify(category: str, payload: str) -> ItemClassification:
 
 _FILLER_NAMES = [
     name for name, (_, category, payload) in world_data.ITEM_DATA.items()
-    if _classify(category, payload) == ItemClassification.filler
+    if _classify(category) == ItemClassification.filler
 ]
 
 
@@ -52,7 +50,7 @@ class BomberCrewWorld(World):
 
     def create_item(self, name: str) -> Item:
         item_id, category, payload = world_data.ITEM_DATA[name]
-        return BomberCrewItem(name, _classify(category, payload), item_id, self.player)
+        return BomberCrewItem(name, _classify(category), item_id, self.player)
 
     def create_event(self, name: str) -> Item:
         return BomberCrewItem(name, ItemClassification.progression, None, self.player)
