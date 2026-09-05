@@ -64,6 +64,11 @@ public static class GameState
                 if (GameFlow.Instance.GetIsInMissionProbable()) return false;
                 if (GameFlow.Instance.IsLoading()) return false;
 
+                // No save loaded yet (e.g. still at the main menu right after connecting) - crew/
+                // bomber state doesn't exist yet, so applying anything crew-related here throws
+                // (e.g. CrewContainer.GetCurrentCrewCount() dereferences SaveDataContainer.Get()).
+                if (SaveDataContainer.Instance?.Get() == null) return false;
+
                 // A live bomber in the scene means we are in a mission or briefing.
                 if (BomberSpawn.Instance != null && BomberSpawn.Instance.GetBomberSystems() != null)
                     return false;
@@ -117,30 +122,44 @@ public static class GameState
 
     /// <summary>
     /// Returns all currently alive crewmen from the persistent roster.
+    ///
+    /// Guards each step individually rather than wrapping the whole method in one try/catch:
+    /// this is an iterator method, so a try/catch around just the call to it (as this used to
+    /// have) never actually runs - the body only executes lazily, one MoveNext() per foreach
+    /// iteration in the caller, by which point the original try/catch has long since returned.
+    /// Any exception here (e.g. CrewContainer existing but not yet backed by a loaded save)
+    /// used to propagate straight out of the caller's foreach uncaught.
     /// </summary>
     public static IEnumerable<Crewman> GetAliveCrewmen()
     {
-        IEnumerable<Crewman> Enumerate()
-        {
-            var container = CrewContainer.Instance;
-            if (container == null) yield break;
+        var container = CrewContainer.Instance;
+        if (container == null) yield break;
 
-            int count = container.GetCurrentCrewCount();
-            for (int i = 0; i < count; i++)
-            {
-                var crewman = container.GetCrewman(i);
-                if (crewman != null && !crewman.IsDead())
-                    yield return crewman;
-            }
-        }
-
+        int count;
         try
         {
-            return Enumerate();
+            count = container.GetCurrentCrewCount();
         }
         catch
         {
-            return System.Linq.Enumerable.Empty<Crewman>();
+            yield break;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            Crewman crewman;
+            bool alive;
+            try
+            {
+                crewman = container.GetCrewman(i);
+                alive = crewman != null && !crewman.IsDead();
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (alive) yield return crewman;
         }
     }
 
