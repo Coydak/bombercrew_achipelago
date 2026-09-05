@@ -5,6 +5,7 @@ using BC_archipelago.Archipelago;
 using BC_archipelago.Utils;
 using game;
 using HarmonyLib;
+using UnityEngine;
 
 namespace BC_archipelago.BomberCrew;
 
@@ -29,6 +30,9 @@ public static class ShopHooks
 {
     private static bool patched;
 
+    private static readonly Color CheckedTint = new(0.4f, 1f, 0.4f);
+    private static readonly Color UncheckedTint = Color.white;
+
     private readonly struct EquipmentPurchaseState
     {
         public readonly Dictionary<Crewman, CrewmanEquipmentBase> OldEquipped;
@@ -52,6 +56,101 @@ public static class ShopHooks
         patched = true;
 
         Plugin.BepinLogger.LogDebug("ShopHooks applied.");
+    }
+
+    // ---------------------------------------------------------------------
+    // Visual "already checked" indicator on shop rows
+    // ---------------------------------------------------------------------
+
+    // MultiTextSetter (the concrete TextSetter used by these rows) doesn't override SetColor
+    // (it's a no-op in the TextSetter base class) - it just fans SetText out to an array of
+    // tk2dTextMesh, which DOES implement SetColor. Reach into that array via reflection instead.
+    private static readonly System.Reflection.FieldInfo MultiTextSetterMeshesField =
+        typeof(MultiTextSetter).GetField("m_allMeshesToSet", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    private static void SetTextColor(TextSetter setter, Color color)
+    {
+        if (setter == null) return;
+
+        if (setter is MultiTextSetter multi)
+        {
+            if (MultiTextSetterMeshesField?.GetValue(multi) is tk2dTextMesh[] meshes)
+            {
+                foreach (var mesh in meshes)
+                {
+                    mesh?.SetColor(color);
+                }
+            }
+            return;
+        }
+
+        setter.SetColor(color);
+    }
+
+    private static readonly System.Reflection.FieldInfo BomberRowFittableField =
+        typeof(BomberUpgradePurchaseableSelection).GetField("m_thisFittable", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    private static readonly System.Reflection.FieldInfo BomberRowRequirementField =
+        typeof(BomberUpgradePurchaseableSelection).GetField("m_requirementSlot", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    private static readonly System.Reflection.FieldInfo BomberRowNameField =
+        typeof(BomberUpgradePurchaseableSelection).GetField("m_name", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    private static readonly System.Reflection.FieldInfo CrewRowEquipmentField =
+        typeof(CrewQuartersItemSelectButton).GetField("m_equipment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    private static readonly System.Reflection.FieldInfo CrewRowNameField =
+        typeof(CrewQuartersItemSelectButton).GetField("m_itemName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    /// <summary>
+    /// Tints a shop row's name text green once its location has already been checked, white
+    /// otherwise, so the player can tell at a glance which purchases still send a new check
+    /// without needing to read a console message. Untracked combos (e.g. cosmetic Livery) are
+    /// left with their normal vanilla appearance.
+    ///
+    /// Patched here rather than on BomberUpgradePurchaseableSelection/CrewQuartersItemSelectButton's
+    /// own Refresh() because SelectableFilterButton.SetUpGraphics is the actual last writer of the
+    /// row's text color (it runs on every selection/hover/filter state change via
+    /// RefreshGraphicsStates(), several of which - e.g. SetSelected() - don't go through the row's
+    /// own OnRefresh event at all) - tinting from Refresh() got silently overwritten back to the
+    /// vanilla color as soon as the row's selection state changed. Postfixing the true last writer
+    /// instead means our tint always wins, however the refresh was triggered.
+    /// </summary>
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(SelectableFilterButton), "SetUpGraphics")]
+    private static void SetUpGraphicsPostfix(SelectableFilterButton __instance)
+    {
+        try
+        {
+            var bomberRow = __instance.GetComponent<BomberUpgradePurchaseableSelection>();
+            if (bomberRow != null)
+            {
+                var fittable = BomberRowFittableField.GetValue(bomberRow) as EquipmentUpgradeFittableBase;
+                var requirement = BomberRowRequirementField.GetValue(bomberRow) as BomberRequirements.BomberEquipmentRequirement;
+                var nameSetter = BomberRowNameField.GetValue(bomberRow) as TextSetter;
+                if (fittable == null || requirement == null || nameSetter == null) return;
+
+                long locationId = LocationTable.GetShopPurchaseLocation($"{requirement.GetUniquePartId()}:{fittable.name}");
+                if (locationId < 0) return; // untracked (e.g. cosmetic Livery) - leave vanilla appearance alone
+
+                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? CheckedTint : UncheckedTint);
+                return;
+            }
+
+            var crewRow = __instance.GetComponent<CrewQuartersItemSelectButton>();
+            if (crewRow != null)
+            {
+                var equipment = CrewRowEquipmentField.GetValue(crewRow) as CrewmanEquipmentBase;
+                var nameSetter = CrewRowNameField.GetValue(crewRow) as TextSetter;
+                if (equipment == null || nameSetter == null) return;
+
+                long locationId = LocationTable.GetShopPurchaseLocation($"{equipment.GetGearType()}:{equipment.name}");
+                if (locationId < 0) return;
+
+                SetTextColor(nameSetter, ArchipelagoClient.ServerData.CheckedLocations.Contains(locationId) ? CheckedTint : UncheckedTint);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Plugin.BepinLogger.LogError($"Error in ShopHooks.SetUpGraphicsPostfix: {ex}");
+        }
     }
 
     // ---------------------------------------------------------------------
